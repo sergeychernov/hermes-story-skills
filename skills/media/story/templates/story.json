@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "id": "small-story-id",
+  "title": "Small story",
+  "status": "collecting",
+  "story_type": "moment",
+  "arc": {
+    "beats": ["hook", "setup", "payoff", "closing"]
+  },
+  "scenes": [],
+  "context": {
+    "occasion": null,
+    "people": [],
+    "places": [],
+    "source": "conversation",
+    "extensions": {}
+  },
+  "publication": {
+    "status": "not-approved"
+  }
+}

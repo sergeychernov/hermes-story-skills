@@ -4,10 +4,22 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from build_episode import caption_specs, visual_filter
+from build_episode import caption_specs, visual_filter, write_text
 
 
 class VisualFilterTests(unittest.TestCase):
+    def test_text_output_atomically_replaces_symlink_without_following_it(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            outside = root / "outside.txt"
+            outside.write_text("ORIGINAL\n", encoding="utf-8")
+            output = root / "caption.txt"
+            output.symlink_to(outside)
+            write_text(output, "approved caption")
+            self.assertEqual(outside.read_text(encoding="utf-8"), "ORIGINAL\n")
+            self.assertFalse(output.is_symlink())
+            self.assertEqual(output.read_text(encoding="utf-8"), "approved caption\n")
+
     def test_text_defaults_to_lower_fifth_without_touching_bottom_edge(self):
         with tempfile.TemporaryDirectory() as td:
             title = Path(td) / "title.txt"
