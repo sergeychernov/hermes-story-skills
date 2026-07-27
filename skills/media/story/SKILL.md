@@ -32,7 +32,7 @@ Skills are instruction documents, not callable modules. Load dependencies progre
 
 1. **Media intake:** load `photo-story-archive`; preserve and checksum originals before editing.
 2. **Still scene:** load `still-image-animation`; render exactly one independently playable MP4 for each new photo.
-3. **Travel planning/context:** load `travel-planning`, `maps`, or `live-transit-navigation` only when the story actually needs those facts. Store travel data under `context.extensions.travel`; never add travel-only root fields.
+3. **Travel planning/context:** load `travel-planning`, `maps`, or `live-transit-navigation` only when the story needs those facts. Store travel data under `context.extensions.travel`; never add travel-only root fields.
 4. **Publication:** load `social-publisher` only after the final package is verified and the user asks to publish.
 
 `metadata.hermes.related_skills` is discovery metadata and does not perform these steps automatically.
