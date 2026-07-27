@@ -10,6 +10,8 @@ Composable Hermes skills for small media stories:
 
 Travel planning remains an external concern handled by the existing `travel-planning`, `maps`, and `live-transit-navigation` skills. Travel can contribute optional context to `story`; it is not a storytelling dependency.
 
+By default, durable story archives live under the domain-neutral `~/stories/YYYY-MM-DD-topic/` root. Originals, previews, music, renders, and publishing packages stay together in the corresponding story directory; platform names describe exports, not storage roots.
+
 ## Prerequisites
 
 ### Required for local development and media tests

@@ -1,7 +1,7 @@
 ---
 name: photo-story-archive
 description: Build a durable chronological photo/video journal, prepare Instagram and YouTube Shorts packages, and enforce explicit approval before publishing.
-version: 1.1.3
+version: 1.1.4
 metadata:
   hermes:
     tags: [photos, video, journal, instagram, reels, youtube-shorts, publishing, archive, travel]
@@ -17,7 +17,7 @@ Preserve original media durably, keep conversational context in chronological or
 
 ## Workflow
 
-1. **Resolve the archive root and archive boundary.** Prefer a user-specified project or vault. Otherwise use a durable folder such as `~/instagram-drafts/YYYY-MM-DD-topic/`; never treat a cache/upload path as the archive. When the user explicitly says **“new archive”**, create a separate root even if another archive exists for the same date or city—do not silently merge by temporal or geographic similarity. If the boundary is supplied as a clarification immediately after one media upload, include that single upload because it prompted the clarification; do not also import media from earlier user turns merely because it is visible nearby in the conversation. If inclusion is genuinely ambiguous, ask once rather than importing older context wholesale.
+1. **Resolve the archive root and archive boundary.** Prefer a user-specified project or vault. Otherwise use the domain-neutral durable root `~/stories/YYYY-MM-DD-topic/` (`/opt/data/home/stories/` when Hermes runs with its standard homelab `HOME`). Keep every story's originals, previews, music, renders, and publishing packages inside that story directory; do not create platform-named sibling roots or a global music-preview root. Never treat a cache/upload path as the archive. When the user explicitly says **“new archive”**, create a separate root even if another archive exists for the same date or city—do not silently merge by temporal or geographic similarity. If the boundary is supplied as a clarification immediately after one media upload, include that single upload because it prompted the clarification; do not also import media from earlier user turns merely because it is visible nearby in the conversation. If inclusion is genuinely ambiguous, ask once rather than importing older context wholesale.
 2. **Preserve the original.** Copy images without recompression into `photos/` and videos without transcoding into `videos/`. Use `YYYY-MM-DD_HH-MM-short-scene-name.ext` and never overwrite a prior upload.
 3. **Verify the copy.** Compare source and archive SHA-256. For images, record byte size and dimensions using `scripts/archive_photo.py`. For videos, use `ffprobe` to record duration, dimensions, codecs, frame rate, audio streams, creation time and size; generate a separate contact sheet only for review.
 4. **Label time honestly.** Prefer embedded EXIF/container creation time when present. Otherwise record chat receipt/archive time and label the source—do not imply it came from the camera.
@@ -34,13 +34,15 @@ Preserve original media durably, keep conversational context in chronological or
 ## Recommended layout
 
 ```text
-YYYY-MM-DD-topic/
-├── story.md
-├── photos/                 # untouched image originals
-├── videos/                 # untouched video originals
-├── previews/               # review-only contact sheets/thumbnails
-├── exports/                # rendered platform deliverables
-└── publish-manifest.md      # exact approved revision and status
+~/stories/
+└── YYYY-MM-DD-topic/
+    ├── story.md
+    ├── photos/                 # untouched image originals
+    ├── videos/                 # untouched video originals
+    ├── previews/               # review-only contact sheets/thumbnails
+    ├── music/                  # preview and approved tracks for this story
+    ├── exports/                # rendered platform deliverables
+    └── publish-manifest.md     # exact approved revision and status
 ```
 
 Use `references/archive-schema.md` for journal metadata, `references/video-and-publishing-pipeline.md` for video inspection, cross-platform exports, approval and publishing, and `references/editorial-corrections-and-late-chronology.md` for late-arriving early scenes, duplicate resends, signage-based captions, and setup/payoff corrections.
@@ -58,6 +60,7 @@ Do not repeat the archive explanation or full path on every asset unless request
 ## Pitfalls
 
 - Cache paths are temporary; always create a durable copy.
+- Keep story assets under `~/stories/<story>/`; do not revive legacy platform-specific roots.
 - Do not overwrite assets that share an upload filename.
 - Do not silently alter orientation, crop, color, resolution or audio.
 - Do not equate ingestion order with story order: late-arriving media may belong at the beginning, while stable material IDs should remain unchanged.
