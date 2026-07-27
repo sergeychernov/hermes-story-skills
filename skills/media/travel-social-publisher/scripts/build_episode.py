@@ -9,7 +9,7 @@ from pathlib import Path
 STILL_ANIMATION_SCRIPTS = Path(__file__).resolve().parents[2] / 'still-image-animation' / 'scripts'
 if str(STILL_ANIMATION_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(STILL_ANIMATION_SCRIPTS))
-from still_image_animation import visual_filter
+from still_image_animation import visual_filter, resolve_font
 
 W, H, FPS = 1080, 1920, 30
 # Aim the center of every text block at 4/5 of frame height, while reserving
@@ -18,10 +18,6 @@ LOWER_FIFTH_Y = 'min(h*0.80-text_h/2\\,h-text_h-360)'
 TITLE_Y = LOWER_FIFTH_Y
 CAPTION_Y = LOWER_FIFTH_Y
 CAPTION_WRAP = 22
-FONT_CANDIDATES = [
-    Path('/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'),
-    Path('/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf'),
-]
 
 def run(cmd: list[str]) -> None:
     print('+', ' '.join(str(x) for x in cmd))
@@ -44,7 +40,7 @@ def still_export(source: Path, out: Path, width: int, height: int, title_file: P
           f'crop={width}:{height},boxblur=24:12[bg2];[fg]scale={width}:{height}:'
           f'force_original_aspect_ratio=decrease[fg2];[bg2][fg2]overlay=(W-w)/2:(H-h)/2')
     if title_file:
-        font = next((p for p in FONT_CANDIDATES if p.exists()), None)
+        font = resolve_font()
         if font:
             escaped = str(title_file).replace("'", "\\'").replace(':', '\\:')
             fnt = str(font).replace(':', '\\:')

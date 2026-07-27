@@ -5,11 +5,20 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 SCRIPTS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SCRIPTS))
 
-from still_image_animation import normalize_spec, visual_filter
+import still_image_animation as sia
+from still_image_animation import (
+    normalize_spec,
+    visual_filter,
+    resolve_font,
+    _pan_crop_x_expr,
+    _pan_progress_value,
+    _zoompan_filter,
+)
 
 
 class SpecTests(unittest.TestCase):
@@ -25,6 +34,45 @@ class SpecTests(unittest.TestCase):
         self.assertEqual(spec["focus_y"], 0.0)
         self.assertEqual(spec["motion"], "none")
         self.assertEqual(spec["fit_mode"], "crop")
+        self.assertTrue(spec["fade_in"])
+        self.assertTrue(spec["fade_out"])
+        self.assertEqual(spec["pan_easing"], "focus_dwell")
+
+    def test_rejects_unknown_pan_easing(self):
+        with self.assertRaisesRegex(ValueError, "unsupported pan_easing"):
+            normalize_spec({
+                "schema_version": 1,
+                "source": "input.ppm",
+                "output": "scene.mp4",
+                "pan_easing": "bounce",
+            })
+
+    def test_normalizes_fade_flags_independently(self):
+        spec = normalize_spec({
+            "schema_version": 1,
+            "source": "input.ppm",
+            "output": "scene.mp4",
+            "fade_in": False,
+            "fade_out": True,
+        })
+        self.assertFalse(spec["fade_in"])
+        self.assertTrue(spec["fade_out"])
+
+    def test_visual_filter_applies_fades_independently(self):
+        both = visual_filter(0, 3.0, fit_mode="crop", motion="none")
+        self.assertIn("fade=t=in:st=0:d=0.20", both)
+        self.assertIn("fade=t=out:st=2.800:d=0.20", both)
+
+        in_only = visual_filter(0, 3.0, fit_mode="crop", motion="none", fade_in=True, fade_out=False)
+        self.assertIn("fade=t=in:st=0:d=0.20", in_only)
+        self.assertNotIn("fade=t=out", in_only)
+
+        out_only = visual_filter(0, 3.0, fit_mode="crop", motion="none", fade_in=False, fade_out=True)
+        self.assertNotIn("fade=t=in", out_only)
+        self.assertIn("fade=t=out:st=2.800:d=0.20", out_only)
+
+        none = visual_filter(0, 3.0, fit_mode="crop", motion="none", fade_in=False, fade_out=False)
+        self.assertNotIn("fade=t=", none)
 
     def test_rejects_unknown_motion(self):
         with self.assertRaisesRegex(ValueError, "unsupported motion"):
@@ -52,6 +100,81 @@ class SpecTests(unittest.TestCase):
                 "fit_mode": "contain",
                 "motion": "pan_right",
             })
+
+    def test_pan_crop_x_expr_for_each_motion(self):
+        self.assertIn("sin(2*PI*", _pan_crop_x_expr("pan_left", 0.6, 4.0))
+        self.assertIn("clip(", _pan_crop_x_expr("pan_left", 0.6, 4.0))
+        self.assertIn("clip(", _pan_crop_x_expr("pan_right", 0.5, 3.0))
+        self.assertNotIn("0.360*", _pan_crop_x_expr("pan_right", 0.5, 3.0))
+        self.assertEqual(_pan_crop_x_expr("none", 0.42, 3.0), "(iw-ow)*0.420")
+        linear = _pan_crop_x_expr("pan_left", 0.6, 4.0, "linear")
+        self.assertIn("t/4.000", linear)
+        self.assertNotIn("sin(2*PI", linear)
+
+    def test_focus_dwell_passes_through_focus_without_stopping(self):
+        focus = 0.5
+        self.assertAlmostEqual(_pan_progress_value(0.0, "focus_dwell", focus), 0.0, places=6)
+        self.assertAlmostEqual(_pan_progress_value(1.0, "focus_dwell", focus), 1.0, places=6)
+        self.assertAlmostEqual(_pan_progress_value(focus, "focus_dwell", focus), focus, places=6)
+        progress_deriv = (
+            _pan_progress_value(focus + 1e-4, "focus_dwell", focus)
+            - _pan_progress_value(focus - 1e-4, "focus_dwell", focus)
+        ) / 2e-4
+        # Slower than linear (1.0), but never stopped (0.0).
+        self.assertGreater(progress_deriv, 0.35)
+        self.assertLess(progress_deriv, 0.55)
+        values = [_pan_progress_value(i / 100, "focus_dwell", focus) for i in range(101)]
+        self.assertTrue(all(values[i] <= values[i + 1] + 1e-9 for i in range(100)))
+        edge_speed = (
+            _pan_progress_value(0.02, "focus_dwell", focus)
+            - _pan_progress_value(0.0, "focus_dwell", focus)
+        ) / 0.02
+        self.assertGreater(edge_speed, progress_deriv)
+
+    def test_pan_uses_full_horizontal_range(self):
+        expr = _pan_crop_x_expr("pan_right", 0.5, 3.0, "linear")
+        self.assertIn("clip(t/3.000", expr)
+        dwell = _pan_crop_x_expr("pan_right", 0.5, 3.0, "focus_dwell")
+        self.assertIn("clip(", dwell)
+        self.assertNotIn("0.360*", dwell)
+
+    def test_zoompan_filter_only_for_zoom_motions(self):
+        zoom_in = _zoompan_filter("zoom_in", 0.3, 0.48, 3.0, 30, 1080, 1920)
+        self.assertIn("zoompan", zoom_in)
+        self.assertIn("iw*0.300", zoom_in)
+        self.assertIn("ih*0.480", zoom_in)
+        self.assertEqual(_zoompan_filter("pan_right", 0.5, 0.5, 3.0, 30, 1080, 1920), "")
+
+    def test_resolve_font_prefers_first_existing_candidate(self):
+        with tempfile.TemporaryDirectory() as td:
+            missing = Path(td) / "missing.ttf"
+            found = Path(td) / "found.ttf"
+            found.write_bytes(b"font")
+            with patch.object(sia, "FONT_CANDIDATES", (missing, found)):
+                self.assertEqual(resolve_font(), found)
+
+    def test_resolve_font_searches_configured_roots(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            font = root / "Arial Bold.ttf"
+            font.write_bytes(b"font")
+            with patch.object(sia, "FONT_CANDIDATES", ()), patch.object(
+                sia, "FONT_SEARCH_ROOTS", (root,)
+            ), patch.object(sia, "FONT_RELATIVE_NAMES", ("Arial Bold.ttf",)):
+                self.assertEqual(resolve_font(), font)
+
+    def test_title_renders_when_font_available(self):
+        if not sia._ffmpeg_supports_drawtext():
+            self.skipTest("ffmpeg drawtext filter unavailable")
+        font = resolve_font()
+        if font is None:
+            self.skipTest("no system font available in this environment")
+        with tempfile.TemporaryDirectory() as td:
+            title = Path(td) / "title.txt"
+            title.write_text("TITLE\n", encoding="utf-8")
+            chain = visual_filter(0, 1.0, title, [], fit_mode="crop", motion="none")
+            self.assertIn("drawtext", chain)
+            self.assertIn("fontfile=", chain)
 
     def test_contain_filter_uses_full_foreground_over_background(self):
         chain = visual_filter(0, 1.0, fit_mode="contain", motion="none", width=270, height=480, fps=10)
