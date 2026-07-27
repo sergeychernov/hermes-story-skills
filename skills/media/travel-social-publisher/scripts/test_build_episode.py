@@ -47,7 +47,7 @@ class VisualFilterTests(unittest.TestCase):
         )
         self.assertIn("crop=1080:1920", result)
         self.assertIn("t/4.000", result)
-        self.assertIn("clip(0.780-0.360*t/4.000", result)
+        self.assertIn("sin(2*PI*(t/4.000-0.600", result)
         self.assertNotIn("zoompan", result)
 
     def test_portrait_zoom_uses_high_resolution_cosine_easing(self):

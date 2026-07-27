@@ -22,8 +22,8 @@ It must not infer narrative order, travel context, audience, social platform, or
 1. Inspect the source image and identify its visual anchor.
 2. Choose `crop` for ordinary full-frame motion; use `contain` only when preserving the entire image is essential.
 3. Choose one motion: `pan_left`, `pan_right`, `zoom_in`, `zoom_out`, or an explicitly requested `none`.
-4. Set normalized `focus_x` and `focus_y` in `[0,1]`. For faces, focus between the eyes; for a pair, use the midpoint.
-5. Create a JSON spec from `templates/animation-spec.json` using paths relative to a dedicated root.
+4. Set normalized `focus_x` and `focus_y` in `[0,1]`. For faces, focus between the eyes; for a pair, use the midpoint. Pan crosses the full horizontal crop range; default `pan_easing: focus_dwell` is faster at the edges and slower near `focus_x` without stopping; use `linear` for constant speed.
+5. Create a JSON spec from `templates/animation-spec.json` using paths relative to a dedicated root. See `templates/animation-spec.schema.json` for allowed values and defaults.
 6. Render:
 
 ```bash
@@ -43,6 +43,8 @@ python3 <skill-dir>/scripts/animate_still.py \
 - Supported motion: `none`, `pan_left`, `pan_right`, `zoom_in`, `zoom_out`.
 - Supported fit: `crop`, `contain`.
 - Default output is 1080×1920, 30 fps, H.264/yuv420p.
+- Fade in/out (0.2 s each) are on by default; disable independently with `fade_in: false` or `fade_out: false`.
+- Pan easing: `focus_dwell` (default) or `linear`.
 - Preserve original files; write only the declared derived output and transient title sidecar.
 
 Read `references/contract.md` before integrating another renderer or orchestrator.

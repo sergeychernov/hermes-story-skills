@@ -1,0 +1,119 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "still-image-animation/animation-spec.schema.json",
+  "title": "Still Image Animation Spec",
+  "description": "One still image plus motion parameters for animate_still.py. Paths are relative to --root.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "source", "output"],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Optional JSON Schema pointer for editors."
+    },
+    "schema_version": {
+      "const": 1,
+      "description": "Contract version. Must be 1."
+    },
+    "source": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*\\.\\.).+$",
+      "description": "Existing image path relative to --root. No absolute paths or .. segments."
+    },
+    "output": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*\\.\\.).+$",
+      "description": "Derived MP4 path relative to --root. No absolute paths or .. segments."
+    },
+    "width": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 1080,
+      "description": "Output frame width in pixels."
+    },
+    "height": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 1920,
+      "description": "Output frame height in pixels."
+    },
+    "fps": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 30,
+      "description": "Output frame rate."
+    },
+    "duration": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "default": 3.0,
+      "description": "Scene length in seconds."
+    },
+    "fit_mode": {
+      "type": "string",
+      "enum": ["crop", "contain"],
+      "default": "crop",
+      "description": "crop fills the frame with motion; contain keeps the full image over a blurred background."
+    },
+    "motion": {
+      "type": "string",
+      "enum": ["none", "pan_left", "pan_right", "zoom_in", "zoom_out"],
+      "default": "none",
+      "description": "Single motion for the scene. Pan and zoom are mutually exclusive styles."
+    },
+    "focus_x": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "default": 0.5,
+      "description": "Normalized horizontal focus in [0,1]. For faces, aim between the eyes."
+    },
+    "focus_y": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "default": 0.5,
+      "description": "Normalized vertical focus in [0,1]. Most important for zoom motion."
+    },
+    "pan_easing": {
+      "type": "string",
+      "enum": ["linear", "focus_dwell"],
+      "default": "focus_dwell",
+      "description": "Pan speed curve for pan_left and pan_right across the full horizontal range. focus_dwell: faster at edges, slower near focus_x without stopping; linear: constant speed."
+    },
+    "title": {
+      "type": "string",
+      "default": "",
+      "description": "Optional burned-in title text for the full scene. Requires FFmpeg drawtext and a system font."
+    },
+    "overwrite": {
+      "type": "boolean",
+      "default": false,
+      "description": "Allow replacing an existing output file."
+    },
+    "fade_in": {
+      "type": "boolean",
+      "default": true,
+      "description": "0.2 s fade from black at scene start."
+    },
+    "fade_out": {
+      "type": "boolean",
+      "default": true,
+      "description": "0.2 s fade to black at scene end."
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "fit_mode": { "const": "contain" },
+          "motion": { "enum": ["pan_left", "pan_right"] }
+        },
+        "required": ["fit_mode", "motion"]
+      },
+      "then": false
+    }
+  ]
+}
