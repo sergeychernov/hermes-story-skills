@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "source": "originals/photo.jpg",
+  "output": "derived/scene-001.mp4",
+  "width": 1080,
+  "height": 1920,
+  "fps": 30,
+  "duration": 3.0,
+  "fit_mode": "crop",
+  "motion": "pan_right",
+  "focus_x": 0.5,
+  "focus_y": 0.5,
+  "title": "",
+  "overwrite": false
+}

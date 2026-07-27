@@ -1,8 +1,15 @@
 #!/usr/bin/env python3
 """Render one Instagram Reel / YouTube Short package from an episode manifest."""
 from __future__ import annotations
-import argparse, hashlib, json, shutil, subprocess, sys, tempfile, textwrap
+import argparse, hashlib, json, os, shutil, subprocess, sys, tempfile, textwrap
 from pathlib import Path
+
+# Compatibility seam: the episode builder delegates still-scene motion and
+# typography to the independently testable still-image-animation skill.
+STILL_ANIMATION_SCRIPTS = Path(__file__).resolve().parents[2] / 'still-image-animation' / 'scripts'
+if str(STILL_ANIMATION_SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(STILL_ANIMATION_SCRIPTS))
+from still_image_animation import visual_filter
 
 W, H, FPS = 1080, 1920, 30
 # Aim the center of every text block at 4/5 of frame height, while reserving
@@ -32,72 +39,6 @@ def safe_path(root: Path, rel: str) -> Path:
         raise SystemExit(f'missing input: {p}')
     return p
 
-def visual_filter(i: int, duration: float, title_file: Path | None,
-                  caption_overlays: list[tuple[Path, float, float]] | Path | None,
-                  fit_mode: str = 'contain', focus_x: float = 0.5,
-                  focus_y: float = 0.5, motion: str = 'none',
-                  title_y: str = TITLE_Y, caption_y: str = CAPTION_Y) -> str:
-    focus_x = max(0.0, min(1.0, focus_x))
-    focus_y = max(0.0, min(1.0, focus_y))
-    zoom_motion = motion in {'zoom_in', 'zoom_out'}
-    canvas_w, canvas_h = (W * 2, H * 2) if zoom_motion else (W, H)
-    if fit_mode == 'crop':
-        if motion == 'pan_left':
-            x_expr = f"'(iw-ow)*clip({min(1.0, focus_x + 0.18):.3f}-0.360*t/{duration:.3f},0,1)'"
-        elif motion == 'pan_right':
-            x_expr = f"'(iw-ow)*clip({max(0.0, focus_x - 0.18):.3f}+0.360*t/{duration:.3f},0,1)'"
-        else:
-            x_expr = f'(iw-ow)*{focus_x:.3f}'
-        base = (
-            f'[{i}:v]scale={canvas_w}:{canvas_h}:force_original_aspect_ratio=increase,'
-            f'crop={canvas_w}:{canvas_h}:x={x_expr}:y=(ih-oh)/2,'
-            f'setsar=1,fps={FPS},trim=duration={duration:.3f},setpts=PTS-STARTPTS'
-        )
-    else:
-        base = (
-            f'[{i}:v]split=2[bg{i}src][fg{i}src];'
-            f'[bg{i}src]scale=540:960:force_original_aspect_ratio=increase,crop=540:960,'
-            f'boxblur=24:12,scale={canvas_w}:{canvas_h}[bg{i}];'
-            f'[fg{i}src]scale={canvas_w}:{canvas_h}:force_original_aspect_ratio=decrease[fg{i}];'
-            f'[bg{i}][fg{i}]overlay=(W-w)/2:(H-h)/2,setsar=1,fps={FPS},'
-            f'trim=duration={duration:.3f},setpts=PTS-STARTPTS'
-        )
-    if zoom_motion:
-        frames = max(1, round(duration * FPS) - 1)
-        ease = f'((1-cos(PI*min(on/{frames},1)))/2)'
-        if motion == 'zoom_in':
-            zoom = f'1+0.130*{ease}'
-        else:
-            zoom = f'1.130-0.130*{ease}'
-        x = f'max(0,min(iw-iw/zoom,iw*{focus_x:.3f}-iw/(2*zoom)))'
-        y = f'max(0,min(ih-ih/zoom,ih*{focus_y:.3f}-ih/(2*zoom)))'
-        base += (f",zoompan=z='{zoom}':x='{x}':y='{y}':"
-                 f'd=1:s={W}x{H}:fps={FPS}')
-    font = next((p for p in FONT_CANDIDATES if p.exists()), None)
-
-    def add_text(text_file: Path, fontsize: int, y: str,
-                 start: float | None = None, end: float | None = None) -> str:
-        escaped = str(text_file).replace("'", "\\'").replace(':', '\\:')
-        fnt = str(font).replace(':', '\\:')
-        enable = ''
-        if start is not None and end is not None:
-            enable = f":enable='between(t,{start:.3f},{end:.3f})'"
-        return (f",drawtext=fontfile='{fnt}':textfile='{escaped}':fontcolor=white:"
-                f"fontsize={fontsize}:line_spacing=10:"
-                "x=max(70\\,min((w-text_w)/2\\,820-text_w)):"
-                f"y={y}:box=1:boxcolor=black@0.58:boxborderw=24{enable}")
-
-    if font and title_file:
-        base += add_text(title_file, 58, title_y)
-    if isinstance(caption_overlays, Path):
-        caption_overlays = [(caption_overlays, 0.0, duration)]
-    if font:
-        for caption_file, start, end in caption_overlays or []:
-            base += add_text(caption_file, 48, caption_y, start, end)
-    fade_out = max(0.0, duration - 0.20)
-    base += f',fade=t=in:st=0:d=0.20,fade=t=out:st={fade_out:.3f}:d=0.20,format=yuv420p[v{i}]'
-    return base
-
 def still_export(source: Path, out: Path, width: int, height: int, title_file: Path | None = None) -> None:
     vf = (f'split=2[bg][fg];[bg]scale={width}:{height}:force_original_aspect_ratio=increase,'
           f'crop={width}:{height},boxblur=24:12[bg2];[fg]scale={width}:{height}:'
@@ -113,7 +54,19 @@ def still_export(source: Path, out: Path, width: int, height: int, title_file: P
     run(['ffmpeg','-y','-v','error','-i',str(source),'-vf',vf,'-frames:v','1','-q:v','2',str(out)])
 
 def write_text(path: Path, value: str) -> None:
-    path.write_text(value.rstrip() + '\n', encoding='utf-8')
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        mode='w', encoding='utf-8', dir=path.parent,
+        prefix=f'.{path.name}.', suffix='.tmp', delete=False,
+    ) as handle:
+        handle.write(value.rstrip() + '\n')
+        handle.flush()
+        os.fsync(handle.fileno())
+        temp = Path(handle.name)
+    try:
+        os.replace(temp, path)
+    finally:
+        temp.unlink(missing_ok=True)
 
 
 def caption_specs(clip: dict, duration: float) -> list[tuple[str, float, float]]:
