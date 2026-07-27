@@ -1,7 +1,7 @@
 ---
 name: story
 description: Build a small, domain-neutral story from photos, videos, comments, and optional context. Use for family moments, events, projects, walks, meals, jokes, or travel; coordinates archive, titles, per-scene approvals, rendering, music approval, and handoff to publishing without assuming travel.
-version: 1.0.0
+version: 1.0.1
 author: Sergey Chernov / Hermes Agent
 license: MIT
 metadata:
@@ -42,6 +42,7 @@ Skills are instruction documents, not callable modules. Load dependencies progre
 ### 1. Collect and preserve
 
 - Establish one explicit story/archive boundary.
+- Unless the user supplies another project root, keep the complete story under `~/stories/YYYY-MM-DD-topic/`; platform names belong in export metadata, not in the storage path.
 - Inspect and archive each real media file; never infer unavailable media.
 - Preserve capture chronology separately from editorial order.
 - Record user comments as provenance; distinguish jokes from verified facts.
@@ -96,7 +97,7 @@ During migration, the rendering portion of `travel-social-publisher` may be used
 
 ### 6. Music is a separate gate
 
-Generate/select and deliver the standalone track first. Do not mix it into video until explicitly approved. For Sergey's default, prefer acoustic instrumentation, fixed gain without ducking, melody on photos, rhythm on ordinary video, and silence generated stems under source video that already contains music. Video approval and publication approval remain separate.
+Generate/select and deliver the standalone track first. Store previews and approved tracks inside the current story directory (for example `music/previews/` and `music/approved/`), never in a global platform-specific or music-preview root. Do not mix it into video until explicitly approved. For Sergey's default, prefer acoustic instrumentation, fixed gain without ducking, melody on photos, rhythm on ordinary video, and silence generated stems under source video that already contains music. Video approval and publication approval remain separate.
 
 ### 7. Publication handoff
 
