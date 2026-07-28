@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Publish a verified Telegram Story from the authorized personal account."""
 from __future__ import annotations
-import argparse, asyncio, hashlib, json, os, random, subprocess
+import argparse, asyncio, hashlib, json, os, random, subprocess, tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -37,7 +37,7 @@ except ModuleNotFoundError:
 
     types = _Types()
 
-from telegram_channel_registry import registered_channel
+from telegram_channel_registry import KEY_RE, registered_channel
 from telegram_user_common import story_slots, telethon_proxy
 
 BASE=Path(os.environ.get('TELEGRAM_USER_HOME','~/.hermes/telegram-user')).expanduser().resolve()
@@ -115,6 +115,27 @@ def validate_target_audience(channel: str, audience: str) -> None:
         raise ValueError('Telegram channel Stories require --audience everyone; contacts/link apply only to the personal account')
 
 
+def write_json_atomic(path: Path, value: dict) -> None:
+    """Replace a JSON record without following a pre-existing destination symlink."""
+    fd,tmp=tempfile.mkstemp(prefix=f'.{path.name}.',suffix='.tmp',dir=path.parent,text=True)
+    temp=Path(tmp)
+    try:
+        with os.fdopen(fd,'w',encoding='utf-8') as handle:
+            json.dump(value,handle,ensure_ascii=False,indent=2)
+            handle.write('\n'); handle.flush(); os.fsync(handle.fileno())
+        os.replace(temp,path)
+    finally:
+        temp.unlink(missing_ok=True)
+
+
+def write_publish_records(episode_dir: Path, channel: str, record: dict) -> None:
+    if not KEY_RE.fullmatch(channel):
+        raise ValueError(f'Invalid Telegram channel key: {channel!r}')
+    if channel=='self':
+        write_json_atomic(episode_dir/'telegram-story-publish.json',record)
+    write_json_atomic(episode_dir/f'telegram-story-publish-{channel}.json',record)
+
+
 async def resolve_story_target(client: TelegramClient, channel: str):
     """Resolve a required registry key against Telegram's live eligible-channel list."""
     entry=registered_channel(channel)
@@ -133,6 +154,7 @@ async def resolve_story_target(client: TelegramClient, channel: str):
 async def publish(a) -> None:
     d=a.episode_dir.expanduser().resolve(); media=d/'telegram-story.mp4'; verification=d/'verification.json'
     if not a.approved: raise SystemExit('Refusing publication: --approved is required after explicit user command «публикуй».')
+    if not a.channel: a.channel='self'
     try: validate_target_audience(a.channel,a.audience)
     except ValueError as exc: raise SystemExit(str(exc)) from exc
     privacy_rules=privacy_rules_for_audience(a.audience)
@@ -170,11 +192,11 @@ async def publish(a) -> None:
         sid=story_id_from(result)
         if sid is None: raise SystemExit('Telegram accepted the request but returned no Story ID; inspect current stories before retrying')
         record={'platform':'telegram_story','timestamp':datetime.now(timezone.utc).isoformat(),'story_id':sid,'authorized_user_id':me.id,'channel':a.channel,'target_type':'self' if a.channel=='self' else 'channel','target_id':target.get('channel_id') or me.id,'target_username':target.get('username') or (me.username if a.channel=='self' else None),'sha256':actual,'audience':a.audience,'privacy':a.audience,'period_seconds':a.period,'protected':a.protect}
-        (d/f'telegram-story-publish-{a.channel}.json').write_text(json.dumps(record,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+        write_publish_records(d,a.channel,record)
         print(json.dumps({'ok':True,**record},ensure_ascii=False))
     finally: await client.disconnect()
 
 def main() -> None:
-    ap=argparse.ArgumentParser(); ap.add_argument('episode_dir',type=Path); ap.add_argument('--caption-file',type=Path); ap.add_argument('--channel',required=True,help="Required registered target key; use 'self' for the personal account"); ap.add_argument('--audience',choices=['contacts','everyone','link'],required=True,help='contacts=own contacts, everyone=public Story, link=skip Telegram (link-only Stories are unsupported)'); ap.add_argument('--period',type=int,choices=[21600,43200,86400,172800],default=86400); ap.add_argument('--protect',action='store_true'); ap.add_argument('--approved',action='store_true')
+    ap=argparse.ArgumentParser(); ap.add_argument('episode_dir',type=Path); ap.add_argument('--caption-file',type=Path); ap.add_argument('--channel',help="Registered target key; defaults to legacy personal account 'self'"); ap.add_argument('--audience',choices=['contacts','everyone','link'],required=True,help='contacts=own contacts, everyone=public Story, link=skip Telegram (link-only Stories are unsupported)'); ap.add_argument('--period',type=int,choices=[21600,43200,86400,172800],default=86400); ap.add_argument('--protect',action='store_true'); ap.add_argument('--approved',action='store_true')
     a=ap.parse_args(); asyncio.run(publish(a))
 if __name__=='__main__': main()

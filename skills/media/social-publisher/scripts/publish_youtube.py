@@ -23,6 +23,15 @@ AUDIENCE_TO_PRIVACY = {
 }
 
 
+def legacy_environment_credentials(environ=None) -> dict[str, str]:
+    environ = os.environ if environ is None else environ
+    names = ("YOUTUBE_CLIENT_ID", "YOUTUBE_CLIENT_SECRET", "YOUTUBE_REFRESH_TOKEN")
+    missing = [name for name in names if not environ.get(name)]
+    if missing:
+        raise ValueError("missing environment: " + ", ".join(missing))
+    return {name: str(environ[name]) for name in names}
+
+
 def read_tags(path: Path) -> list[str]:
     """Read one accurate YouTube tag per line."""
     tags = [line.strip() for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
@@ -86,7 +95,7 @@ def list_owned_playlists(token: str) -> list[dict]:
             return items
 
 
-def verify_authorized_channel(token: str, expected_channel_id: str) -> dict[str, str]:
+def verify_authorized_channel(token: str, expected_channel_id: str | None) -> dict[str, str]:
     result = api_json("/channels", token, params={"part": "id,snippet", "mine": "true"})
     items = result.get("items") or []
     if len(items) != 1:
@@ -94,7 +103,7 @@ def verify_authorized_channel(token: str, expected_channel_id: str) -> dict[str,
     item = items[0]
     actual_id = str(item.get("id") or "")
     title = str((item.get("snippet") or {}).get("title") or "")
-    if actual_id != str(expected_channel_id):
+    if expected_channel_id is not None and actual_id != str(expected_channel_id):
         raise ValueError("OAuth credentials do not match the selected YouTube channel")
     if not title:
         raise ValueError("authorized YouTube channel has no title")
@@ -202,7 +211,7 @@ def wait_for_verified_upload(
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--channel", required=True, help="Required key from manage_youtube_channels.py list")
+    parser.add_argument("--channel", help="Key from manage_youtube_channels.py list; omitted only for legacy environment credentials")
     parser.add_argument("--video", required=True, type=Path)
     parser.add_argument("--title-file", required=True, type=Path)
     parser.add_argument("--description-file", required=True, type=Path)
@@ -239,7 +248,12 @@ def main():
     privacy = privacy_for_audience(args.audience)
 
     try:
-        selected_channel, credentials = credentials_for_channel(args.channel)
+        if args.channel:
+            selected_channel, credentials = credentials_for_channel(args.channel)
+            expected_channel_id = selected_channel["channel_id"]
+        else:
+            credentials = legacy_environment_credentials()
+            expected_channel_id = None
     except ValueError as exc:
         raise SystemExit(str(exc)) from None
 
@@ -256,7 +270,7 @@ def main():
     ))["access_token"]
 
     try:
-        live_channel = verify_authorized_channel(token, selected_channel["channel_id"])
+        live_channel = verify_authorized_channel(token, expected_channel_id)
     except ValueError as exc:
         raise SystemExit(str(exc)) from None
 
@@ -350,7 +364,7 @@ def main():
         "ok": True,
         "platform": "youtube",
         "channel": {
-            "key": args.channel,
+            "key": args.channel or "legacy-env",
             "id": live_channel["id"],
             "title": live_channel["title"],
         },

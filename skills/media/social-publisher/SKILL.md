@@ -56,7 +56,7 @@ python3 <skill-dir>/scripts/publish_youtube.py \
   --approved
 ```
 
-Before every YouTube publication, list the registered channels and present them as a selectable choice. Never silently reuse the previous channel. Each key maps to its own mode-600 OAuth credentials file; the publisher verifies `channels.list(mine=true)` matches the selected registered channel before upload. Read `references/youtube-oauth-setup.md`, `references/youtube-publish-verification.md`, and `references/youtube-short-thumbnails.md`. API acceptance is not final verification: poll processing, read metadata/tags back, and check the intended public surface when applicable.
+Before every agent-driven YouTube publication, list the registered channels, present them as a selectable choice, and pass the selected key. Never silently reuse the previous channel. Each key maps to its own mode-600 OAuth credentials file; the publisher verifies `channels.list(mine=true)` matches the selected registered channel before upload. For compatibility only, legacy callers may omit `--channel` and keep using the three existing `YOUTUBE_*` environment variables; migrate them with the command in `references/youtube-oauth-setup.md`. Read `references/youtube-oauth-setup.md`, `references/youtube-publish-verification.md`, and `references/youtube-short-thumbnails.md`. API acceptance is not final verification: poll processing, read metadata/tags back, and check the intended public surface when applicable.
 
 ## Telegram Stories
 
@@ -71,7 +71,7 @@ python3 <skill-dir>/scripts/publish_telegram_story.py <package-dir> \
   --approved
 ```
 
-Before every Telegram publication, run `manage_telegram_channels.py list` and present its currently available registered targets as a selectable choice. Never silently reuse a previous target. `self` means the authorized personal account; other keys are explicitly registered channels/supergroups. Add eligible channels with `manage_telegram_channels.py add <key> <id-or-@username> --label <label>` and remove them with `manage_telegram_channels.py remove <key>`. The live Telegram `stories.getChatsToSend` result and `stories.canSendStory` check remain authoritative.
+Before every agent-driven Telegram publication, run `manage_telegram_channels.py list`, present its currently available registered targets as a selectable choice, and pass the selected key. Never silently reuse a previous target. `self` means the authorized personal account; other keys are explicitly registered channels/supergroups. Add eligible channels with `manage_telegram_channels.py add <key> <id-or-@username> --label <label>` and remove them with `manage_telegram_channels.py remove <key>`. The live Telegram `stories.getChatsToSend` result and `stories.canSendStory` check remain authoritative. For compatibility only, legacy callers may omit `--channel`; this maps to `self` and retains `telegram-story-publish.json` alongside the new target-specific record.
 
 Channel Stories require `--audience everyone`; personal-account Stories retain `contacts`, `everyone`, and the safe `link` no-op. The publisher verifies the exact Story MP4 hash and format before upload and writes one target-specific publish record. Read `references/telegram-stories.md` and `references/telegram-user-api-kubernetes.md`.
 

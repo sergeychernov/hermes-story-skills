@@ -17,8 +17,8 @@ def youtube_home() -> Path:
     configured = os.environ.get("YOUTUBE_HOME")
     if configured:
         return Path(configured).expanduser().resolve()
-    hermes_home = Path(os.environ.get("HERMES_HOME", Path.home())).expanduser().resolve()
-    return hermes_home / ".hermes" / "youtube"
+    hermes_home = Path(os.environ.get("HERMES_HOME", Path.home() / ".hermes")).expanduser().resolve()
+    return hermes_home / "youtube"
 
 
 def registry_path() -> Path:

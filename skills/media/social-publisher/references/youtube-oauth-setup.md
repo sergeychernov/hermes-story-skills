@@ -25,15 +25,28 @@ Google Cloud's current Auth Platform UI may show these left-navigation items: **
 8. For each channel, use a separate mode-600 env file, then register and verify it:
 
 ```bash
+YOUTUBE_DIR="${YOUTUBE_HOME:-${HERMES_HOME:-$HOME/.hermes}/youtube}"
 python3 <skill-dir>/scripts/setup_youtube_oauth.py \
-  --env-file "${HERMES_HOME:-$HOME}/.hermes/youtube/channels/travel/credentials.env"
+  --env-file "$YOUTUBE_DIR/channels/travel/credentials.env"
 python3 <skill-dir>/scripts/manage_youtube_channels.py add travel \
   --label "Travel" \
-  --credentials-file "${HERMES_HOME:-$HOME}/.hermes/youtube/channels/travel/credentials.env"
+  --credentials-file "$YOUTUBE_DIR/channels/travel/credentials.env"
 python3 <skill-dir>/scripts/manage_youtube_channels.py list
 ```
 
-Repeat OAuth with a distinct credentials file for every additional channel. The add command exchanges the refresh token without printing it, queries `channels.list(mine=true)`, and records only the stable key, label, channel ID/title, and credential-file path in `${HERMES_HOME:-$HOME}/.hermes/youtube/channels.json` (mode 600).
+Repeat OAuth with a distinct credentials file for every additional channel. The add command exchanges the refresh token without printing it, queries `channels.list(mine=true)`, and records only the stable key, label, channel ID/title, and credential-file path in `$YOUTUBE_DIR/channels.json` (mode 600).
+
+### Migrating the existing single channel
+
+The legacy CLI remains compatible: when `--channel` is omitted, it reads `YOUTUBE_CLIENT_ID`, `YOUTUBE_CLIENT_SECRET`, and `YOUTUBE_REFRESH_TOKEN` from the environment. Register that same profile without reauthorizing:
+
+```bash
+LEGACY_ENV="${HERMES_HOME:-$HOME/.hermes}/.env"
+python3 <skill-dir>/scripts/manage_youtube_channels.py add current \
+  --label "Current channel" --credentials-file "$LEGACY_ENV"
+```
+
+This performs a read-only identity check and stores no credential values in the registry. Existing automation may continue omitting `--channel`; new agent-driven publication must list targets and pass the selected key explicitly.
 
 9. Before every upload, present the current registry list as a selectable choice and pass the chosen key to `publish_youtube.py --channel <key>`. The publisher re-checks that the OAuth identity matches the selected channel before initiating an upload.
 

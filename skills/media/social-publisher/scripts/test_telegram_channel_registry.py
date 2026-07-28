@@ -57,6 +57,24 @@ class TelegramChannelRegistryTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("Telegram Story publication channels", result.stdout)
 
+    def test_publish_record_atomically_replaces_symlink_and_keeps_legacy_self_record(self):
+        from publish_telegram_story import write_publish_records
+
+        episode = Path(self.tempdir.name) / "episode"
+        episode.mkdir()
+        outside = Path(self.tempdir.name) / "outside.json"
+        outside.write_text("DO NOT OVERWRITE\n", encoding="utf-8")
+        legacy = episode / "telegram-story-publish.json"
+        legacy.symlink_to(outside)
+
+        write_publish_records(episode, "self", {"story_id": 42})
+
+        self.assertEqual(outside.read_text(encoding="utf-8"), "DO NOT OVERWRITE\n")
+        self.assertFalse(legacy.is_symlink())
+        self.assertEqual(json.loads(legacy.read_text(encoding="utf-8"))["story_id"], 42)
+        targeted = episode / "telegram-story-publish-self.json"
+        self.assertEqual(json.loads(targeted.read_text(encoding="utf-8"))["story_id"], 42)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -134,6 +134,8 @@ After the explicit **«публикуй»** command, run:
 
 The publisher requires a green `verification.json`, recomputes the media hash, validates the Story format, checks available Story slots, and refuses to run without `--approved`.
 
+Legacy automation may omit `--channel`; it continues to publish as the personal account (`self`) and writes both `telegram-story-publish.json` and `telegram-story-publish-self.json`. New agent-driven publication must always list targets, ask the user, and pass the selected key explicitly. Publish records are replaced atomically and do not follow pre-existing destination symlinks.
+
 This is the deterministic route for personal-account Stories with either contacts-only or public visibility. The gateway's normal Telegram bot connection is not a personal user session and cannot call user MTProto methods.
 
 ### Managed Telegram Business account

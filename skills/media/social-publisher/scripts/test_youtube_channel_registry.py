@@ -52,6 +52,32 @@ class YouTubeChannelRegistryTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("YouTube publication channels", result.stdout)
 
+    def test_hermes_home_is_used_without_double_nesting(self):
+        from youtube_channel_registry import youtube_home
+
+        previous_home = os.environ.get("HERMES_HOME")
+        previous_youtube = os.environ.pop("YOUTUBE_HOME", None)
+        os.environ["HERMES_HOME"] = "/srv/hermes"
+        try:
+            self.assertEqual(youtube_home(), Path("/srv/hermes/youtube"))
+        finally:
+            if previous_home is None:
+                os.environ.pop("HERMES_HOME", None)
+            else:
+                os.environ["HERMES_HOME"] = previous_home
+            if previous_youtube is not None:
+                os.environ["YOUTUBE_HOME"] = previous_youtube
+
+    def test_legacy_environment_credentials_remain_supported(self):
+        from publish_youtube import legacy_environment_credentials
+
+        env = {
+            "YOUTUBE_CLIENT_ID": "id",
+            "YOUTUBE_CLIENT_SECRET": "secret",
+            "YOUTUBE_REFRESH_TOKEN": "refresh",
+        }
+        self.assertEqual(legacy_environment_credentials(env), env)
+
 
 if __name__ == "__main__":
     unittest.main()

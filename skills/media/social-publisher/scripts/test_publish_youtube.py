@@ -58,6 +58,10 @@ class YouTubePlaylistTests(unittest.TestCase):
                 publish_youtube.verify_authorized_channel('token', 'expected'),
                 {'id': 'expected', 'title': 'Travel'},
             )
+            self.assertEqual(
+                publish_youtube.verify_authorized_channel('token', None),
+                {'id': 'expected', 'title': 'Travel'},
+            )
             with self.assertRaisesRegex(ValueError, 'do not match'):
                 publish_youtube.verify_authorized_channel('token', 'other')
         finally:
@@ -181,6 +185,20 @@ class YouTubePlaylistTests(unittest.TestCase):
             ], text=True, capture_output=True, env=env)
             self.assertNotEqual(completed.returncode, 0)
             self.assertIn('explicit --approved', completed.stderr)
+
+    def test_legacy_cli_does_not_require_channel_before_approval_gate(self):
+        completed = subprocess.run([
+            sys.executable, str(Path(__file__).with_name('publish_youtube.py')),
+            '--video', 'missing.mp4',
+            '--title-file', 'missing-title.txt',
+            '--description-file', 'missing-description.txt',
+            '--tags-file', 'missing-tags.txt',
+            '--verification', 'missing-verification.json',
+            '--audience', 'contacts',
+        ], text=True, capture_output=True)
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertIn('explicit --approved', completed.stderr)
+        self.assertNotIn('--channel is required', completed.stderr)
 
 
 if __name__ == '__main__':

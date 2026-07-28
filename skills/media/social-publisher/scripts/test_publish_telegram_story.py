@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import sys
+import subprocess
 import unittest
 from pathlib import Path
 
@@ -7,6 +8,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 
 class StoryMediaAttributesTests(unittest.TestCase):
+    def test_legacy_cli_does_not_require_channel_before_approval_gate(self):
+        script = Path(__file__).resolve().parent / 'publish_telegram_story.py'
+        completed = subprocess.run([
+            sys.executable, str(script), 'missing-episode', '--audience', 'contacts'
+        ], text=True, capture_output=True)
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertIn('--approved is required', completed.stderr)
+        self.assertNotIn('--channel is required', completed.stderr)
+
     def test_audience_maps_to_story_privacy(self):
         from publish_telegram_story import privacy_rules_for_audience
 
