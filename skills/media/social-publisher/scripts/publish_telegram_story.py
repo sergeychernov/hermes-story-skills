@@ -136,6 +136,14 @@ def write_publish_records(episode_dir: Path, channel: str, record: dict) -> None
     write_json_atomic(episode_dir/f'telegram-story-publish-{channel}.json',record)
 
 
+def with_legacy_self_aliases(record: dict, channel: str) -> dict:
+    result=dict(record)
+    if channel=='self':
+        result['user_id']=result.get('authorized_user_id')
+        result['username']=result.get('target_username')
+    return result
+
+
 async def resolve_story_target(client: TelegramClient, channel: str):
     """Resolve a required registry key against Telegram's live eligible-channel list."""
     entry=registered_channel(channel)
@@ -192,6 +200,7 @@ async def publish(a) -> None:
         sid=story_id_from(result)
         if sid is None: raise SystemExit('Telegram accepted the request but returned no Story ID; inspect current stories before retrying')
         record={'platform':'telegram_story','timestamp':datetime.now(timezone.utc).isoformat(),'story_id':sid,'authorized_user_id':me.id,'channel':a.channel,'target_type':'self' if a.channel=='self' else 'channel','target_id':target.get('channel_id') or me.id,'target_username':target.get('username') or (me.username if a.channel=='self' else None),'sha256':actual,'audience':a.audience,'privacy':a.audience,'period_seconds':a.period,'protected':a.protect}
+        record=with_legacy_self_aliases(record,a.channel)
         write_publish_records(d,a.channel,record)
         print(json.dumps({'ok':True,**record},ensure_ascii=False))
     finally: await client.disconnect()

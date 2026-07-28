@@ -57,6 +57,24 @@ class TelegramChannelRegistryTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("Telegram Story publication channels", result.stdout)
 
+    def test_self_record_preserves_legacy_identity_fields(self):
+        from publish_telegram_story import with_legacy_self_aliases
+
+        record = {
+            "authorized_user_id": 123,
+            "target_username": "owner",
+            "channel": "self",
+        }
+        actual = with_legacy_self_aliases(record, "self")
+        self.assertEqual(actual["user_id"], 123)
+        self.assertEqual(actual["username"], "owner")
+        self.assertEqual(actual["authorized_user_id"], 123)
+        self.assertEqual(actual["target_username"], "owner")
+
+        channel_record = with_legacy_self_aliases(record, "travel")
+        self.assertNotIn("user_id", channel_record)
+        self.assertNotIn("username", channel_record)
+
     def test_publish_record_atomically_replaces_symlink_and_keeps_legacy_self_record(self):
         from publish_telegram_story import write_publish_records
 
