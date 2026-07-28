@@ -1,7 +1,7 @@
 ---
 name: social-publisher
 description: Publish an already verified media package to YouTube, Telegram Stories, or Instagram through official APIs after explicit publication and audience gates. Use for OAuth setup, platform adapters, upload verification, and publish records; never for story composition.
-version: 1.0.0
+version: 1.2.0
 author: Sergey Chernov / Hermes Agent
 license: MIT
 metadata:
@@ -44,7 +44,9 @@ Approval and audience are separate gates.
 Require a verified video, reviewed non-empty tag file, exact metadata, and an approved platform-fit cover. Run:
 
 ```bash
+python3 <skill-dir>/scripts/manage_youtube_channels.py list
 python3 <skill-dir>/scripts/publish_youtube.py \
+  --channel <selected-key> \
   --video <package-dir>/reel-short.mp4 \
   --title-file <package-dir>/youtube-title.txt \
   --description-file <package-dir>/youtube-description.txt \
@@ -54,7 +56,7 @@ python3 <skill-dir>/scripts/publish_youtube.py \
   --approved
 ```
 
-Read `references/youtube-oauth-setup.md`, `references/youtube-publish-verification.md`, and `references/youtube-short-thumbnails.md`. API acceptance is not final verification: poll processing, read metadata/tags back, and check the intended public surface when applicable.
+Before every agent-driven YouTube publication, list the registered channels, present them as a selectable choice, and pass the selected key. Never silently reuse the previous channel. Each key maps to its own mode-600 OAuth credentials file; the publisher verifies `channels.list(mine=true)` matches the selected registered channel before upload. For compatibility only, legacy callers may omit `--channel` and keep using the three existing `YOUTUBE_*` environment variables; migrate them with the command in `references/youtube-oauth-setup.md`. Read `references/youtube-oauth-setup.md`, `references/youtube-publish-verification.md`, and `references/youtube-short-thumbnails.md`. API acceptance is not final verification: poll processing, read metadata/tags back, and check the intended public surface when applicable.
 
 ## Telegram Stories
 
@@ -62,12 +64,16 @@ Use a personal user session, not the ordinary Hermes bot connection. Run:
 
 ```bash
 python3 <skill-dir>/scripts/setup_telegram_user.py
+python3 <skill-dir>/scripts/manage_telegram_channels.py list
 python3 <skill-dir>/scripts/publish_telegram_story.py <package-dir> \
+  --channel <selected-key> \
   --audience {contacts,everyone,link} \
   --approved
 ```
 
-`link` performs no Telegram write. The publisher verifies the exact Story MP4 hash and format before upload. Read `references/telegram-stories.md` and `references/telegram-user-api-kubernetes.md`.
+Before every agent-driven Telegram publication, run `manage_telegram_channels.py list`, present its currently available registered targets as a selectable choice, and pass the selected key. Never silently reuse a previous target. `self` means the authorized personal account; other keys are explicitly registered channels/supergroups. Add eligible channels with `manage_telegram_channels.py add <key> <id-or-@username> --label <label>` and remove them with `manage_telegram_channels.py remove <key>`. The live Telegram `stories.getChatsToSend` result and `stories.canSendStory` check remain authoritative. For compatibility only, legacy callers may omit `--channel`; this maps to `self` and retains `telegram-story-publish.json` alongside the new target-specific record.
+
+Channel Stories require `--audience everyone`; personal-account Stories retain `contacts`, `everyone`, and the safe `link` no-op. The publisher verifies the exact Story MP4 hash and format before upload and writes one target-specific publish record. Read `references/telegram-stories.md` and `references/telegram-user-api-kubernetes.md`.
 
 ## Instagram
 
@@ -88,7 +94,7 @@ Credentials come only from environment variables, mode-600 credential files, or 
 
 ## Result and failure handling
 
-- Record only platform, timestamp, returned ID/URL, exact media SHA-256, and visibility.
+- Record only platform, selected target key/ID, timestamp, returned ID/URL, exact media SHA-256, and visibility.
 - Report success per platform; multi-platform publication is not atomic.
 - After an ambiguous timeout, query platform state before retrying to avoid duplicates.
 - Never delete a previous publication until a replacement upload is processed and verified.

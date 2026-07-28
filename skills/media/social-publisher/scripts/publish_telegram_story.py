@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Publish a verified Telegram Story from the authorized personal account."""
 from __future__ import annotations
-import argparse, asyncio, hashlib, json, os, random, subprocess
+import argparse, asyncio, hashlib, json, os, random, subprocess, tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -37,6 +37,7 @@ except ModuleNotFoundError:
 
     types = _Types()
 
+from telegram_channel_registry import KEY_RE, registered_channel
 from telegram_user_common import story_slots, telethon_proxy
 
 BASE=Path(os.environ.get('TELEGRAM_USER_HOME','~/.hermes/telegram-user')).expanduser().resolve()
@@ -109,9 +110,61 @@ def privacy_rules_for_audience(audience: str):
     raise ValueError(f'Unsupported audience: {audience}')
 
 
+def validate_target_audience(channel: str, audience: str) -> None:
+    if channel != 'self' and audience != 'everyone':
+        raise ValueError('Telegram channel Stories require --audience everyone; contacts/link apply only to the personal account')
+
+
+def write_json_atomic(path: Path, value: dict) -> None:
+    """Replace a JSON record without following a pre-existing destination symlink."""
+    fd,tmp=tempfile.mkstemp(prefix=f'.{path.name}.',suffix='.tmp',dir=path.parent,text=True)
+    temp=Path(tmp)
+    try:
+        with os.fdopen(fd,'w',encoding='utf-8') as handle:
+            json.dump(value,handle,ensure_ascii=False,indent=2)
+            handle.write('\n'); handle.flush(); os.fsync(handle.fileno())
+        os.replace(temp,path)
+    finally:
+        temp.unlink(missing_ok=True)
+
+
+def write_publish_records(episode_dir: Path, channel: str, record: dict) -> None:
+    if not KEY_RE.fullmatch(channel):
+        raise ValueError(f'Invalid Telegram channel key: {channel!r}')
+    if channel=='self':
+        write_json_atomic(episode_dir/'telegram-story-publish.json',record)
+    write_json_atomic(episode_dir/f'telegram-story-publish-{channel}.json',record)
+
+
+def with_legacy_self_aliases(record: dict, channel: str) -> dict:
+    result=dict(record)
+    if channel=='self':
+        result['user_id']=result.get('authorized_user_id')
+        result['username']=result.get('target_username')
+    return result
+
+
+async def resolve_story_target(client: TelegramClient, channel: str):
+    """Resolve a required registry key against Telegram's live eligible-channel list."""
+    entry=registered_channel(channel)
+    if entry is None:
+        raise SystemExit(f'Unknown Telegram publication channel {channel!r}; run manage_telegram_channels.py list or add')
+    if channel=='self':
+        return types.InputPeerSelf(),entry
+    available=await client(functions.stories.GetChatsToSendRequest())
+    chat=next((item for item in (getattr(available,'chats',[]) or []) if int(item.id)==entry['channel_id']),None)
+    if chat is None:
+        raise SystemExit(f"Registered channel {channel!r} is not currently eligible for Stories")
+    peer=await client.get_input_entity(chat)
+    return peer,{**entry,'title':getattr(chat,'title',None),'username':getattr(chat,'username',None)}
+
+
 async def publish(a) -> None:
     d=a.episode_dir.expanduser().resolve(); media=d/'telegram-story.mp4'; verification=d/'verification.json'
     if not a.approved: raise SystemExit('Refusing publication: --approved is required after explicit user command «публикуй».')
+    if not a.channel: a.channel='self'
+    try: validate_target_audience(a.channel,a.audience)
+    except ValueError as exc: raise SystemExit(str(exc)) from exc
     privacy_rules=privacy_rules_for_audience(a.audience)
     if privacy_rules is None:
         print(json.dumps({'ok':True,'platform':'telegram_story','published':False,'skipped':True,'audience':'link','reason':'Telegram Stories do not support link-only visibility'},ensure_ascii=False))
@@ -132,7 +185,8 @@ async def publish(a) -> None:
     await client.connect()
     try:
         if not await client.is_user_authorized(): raise SystemExit('Telegram user session is not authorized; run setup_telegram_user.py')
-        me=await client.get_me(); allowed=await client(functions.stories.CanSendStoryRequest(peer=types.InputPeerSelf()))
+        me=await client.get_me(); peer,target=await resolve_story_target(client,a.channel)
+        allowed=await client(functions.stories.CanSendStoryRequest(peer=peer))
         slots=story_slots(allowed)
         if slots is not None and slots<=0: raise SystemExit('Telegram reports no available Story slots')
         uploaded=await upload_story_file(client,media)
@@ -142,15 +196,16 @@ async def publish(a) -> None:
             attributes=video_attributes(duration,720,1280,media.name),
             nosound_video=True,
         )
-        result=await client(functions.stories.SendStoryRequest(peer=types.InputPeerSelf(),media=input_media,privacy_rules=privacy_rules,caption=caption or None,random_id=random.randrange(-(2**63),2**63),period=a.period,noforwards=a.protect))
+        result=await client(functions.stories.SendStoryRequest(peer=peer,media=input_media,privacy_rules=privacy_rules,caption=caption or None,random_id=random.randrange(-(2**63),2**63),period=a.period,noforwards=a.protect))
         sid=story_id_from(result)
         if sid is None: raise SystemExit('Telegram accepted the request but returned no Story ID; inspect current stories before retrying')
-        record={'platform':'telegram_story','timestamp':datetime.now(timezone.utc).isoformat(),'story_id':sid,'user_id':me.id,'username':me.username,'sha256':actual,'audience':a.audience,'privacy':a.audience,'period_seconds':a.period,'protected':a.protect}
-        (d/'telegram-story-publish.json').write_text(json.dumps(record,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+        record={'platform':'telegram_story','timestamp':datetime.now(timezone.utc).isoformat(),'story_id':sid,'authorized_user_id':me.id,'channel':a.channel,'target_type':'self' if a.channel=='self' else 'channel','target_id':target.get('channel_id') or me.id,'target_username':target.get('username') or (me.username if a.channel=='self' else None),'sha256':actual,'audience':a.audience,'privacy':a.audience,'period_seconds':a.period,'protected':a.protect}
+        record=with_legacy_self_aliases(record,a.channel)
+        write_publish_records(d,a.channel,record)
         print(json.dumps({'ok':True,**record},ensure_ascii=False))
     finally: await client.disconnect()
 
 def main() -> None:
-    ap=argparse.ArgumentParser(); ap.add_argument('episode_dir',type=Path); ap.add_argument('--caption-file',type=Path); ap.add_argument('--audience',choices=['contacts','everyone','link'],required=True,help='contacts=own contacts, everyone=public Story, link=skip Telegram (link-only Stories are unsupported)'); ap.add_argument('--period',type=int,choices=[21600,43200,86400,172800],default=86400); ap.add_argument('--protect',action='store_true'); ap.add_argument('--approved',action='store_true')
+    ap=argparse.ArgumentParser(); ap.add_argument('episode_dir',type=Path); ap.add_argument('--caption-file',type=Path); ap.add_argument('--channel',help="Registered target key; defaults to legacy personal account 'self'"); ap.add_argument('--audience',choices=['contacts','everyone','link'],required=True,help='contacts=own contacts, everyone=public Story, link=skip Telegram (link-only Stories are unsupported)'); ap.add_argument('--period',type=int,choices=[21600,43200,86400,172800],default=86400); ap.add_argument('--protect',action='store_true'); ap.add_argument('--approved',action='store_true')
     a=ap.parse_args(); asyncio.run(publish(a))
 if __name__=='__main__': main()

@@ -12,6 +12,8 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+from youtube_channel_registry import credentials_for_channel
+
 DEFAULT_SHORTS_PLAYLIST = "Лягушка-путешественница"
 API = "https://www.googleapis.com/youtube/v3"
 AUDIENCE_TO_PRIVACY = {
@@ -19,6 +21,15 @@ AUDIENCE_TO_PRIVACY = {
     "everyone": "public",
     "link": "unlisted",
 }
+
+
+def legacy_environment_credentials(environ=None) -> dict[str, str]:
+    environ = os.environ if environ is None else environ
+    names = ("YOUTUBE_CLIENT_ID", "YOUTUBE_CLIENT_SECRET", "YOUTUBE_REFRESH_TOKEN")
+    missing = [name for name in names if not environ.get(name)]
+    if missing:
+        raise ValueError("missing environment: " + ", ".join(missing))
+    return {name: str(environ[name]) for name in names}
 
 
 def read_tags(path: Path) -> list[str]:
@@ -82,6 +93,21 @@ def list_owned_playlists(token: str) -> list[dict]:
         page_token = page.get("nextPageToken")
         if not page_token:
             return items
+
+
+def verify_authorized_channel(token: str, expected_channel_id: str | None) -> dict[str, str]:
+    result = api_json("/channels", token, params={"part": "id,snippet", "mine": "true"})
+    items = result.get("items") or []
+    if len(items) != 1:
+        raise ValueError(f"expected exactly one authorized YouTube channel, got {len(items)}")
+    item = items[0]
+    actual_id = str(item.get("id") or "")
+    title = str((item.get("snippet") or {}).get("title") or "")
+    if expected_channel_id is not None and actual_id != str(expected_channel_id):
+        raise ValueError("OAuth credentials do not match the selected YouTube channel")
+    if not title:
+        raise ValueError("authorized YouTube channel has no title")
+    return {"id": actual_id, "title": title}
 
 
 def add_to_playlist(token: str, playlist_id: str, video_id: str) -> str:
@@ -185,6 +211,7 @@ def wait_for_verified_upload(
 
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument("--channel", help="Key from manage_youtube_channels.py list; omitted only for legacy environment credentials")
     parser.add_argument("--video", required=True, type=Path)
     parser.add_argument("--title-file", required=True, type=Path)
     parser.add_argument("--description-file", required=True, type=Path)
@@ -220,15 +247,20 @@ def main():
         raise SystemExit(str(exc)) from None
     privacy = privacy_for_audience(args.audience)
 
-    names = ["YOUTUBE_CLIENT_ID", "YOUTUBE_CLIENT_SECRET", "YOUTUBE_REFRESH_TOKEN"]
-    missing = [name for name in names if not os.environ.get(name)]
-    if missing:
-        raise SystemExit("missing environment: " + ", ".join(missing))
+    try:
+        if args.channel:
+            selected_channel, credentials = credentials_for_channel(args.channel)
+            expected_channel_id = selected_channel["channel_id"]
+        else:
+            credentials = legacy_environment_credentials()
+            expected_channel_id = None
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from None
 
     token_data = urllib.parse.urlencode({
-        "client_id": os.environ[names[0]],
-        "client_secret": os.environ[names[1]],
-        "refresh_token": os.environ[names[2]],
+        "client_id": credentials["YOUTUBE_CLIENT_ID"],
+        "client_secret": credentials["YOUTUBE_CLIENT_SECRET"],
+        "refresh_token": credentials["YOUTUBE_REFRESH_TOKEN"],
         "grant_type": "refresh_token",
     }).encode()
     token = json.load(req(
@@ -236,6 +268,11 @@ def main():
         token_data,
         {"Content-Type": "application/x-www-form-urlencoded"},
     ))["access_token"]
+
+    try:
+        live_channel = verify_authorized_channel(token, expected_channel_id)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from None
 
     # Resolve before upload so a missing/duplicate playlist cannot leave a Short
     # outside the required playlist.
@@ -326,6 +363,11 @@ def main():
     print(json.dumps({
         "ok": True,
         "platform": "youtube",
+        "channel": {
+            "key": args.channel or "legacy-env",
+            "id": live_channel["id"],
+            "title": live_channel["title"],
+        },
         "id": video_id,
         "url": "https://youtu.be/" + video_id,
         "audience": args.audience,

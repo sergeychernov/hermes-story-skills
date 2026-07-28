@@ -85,13 +85,31 @@ Do not use the LAN `hostPort` address from inside the pod when the cluster Servi
 
 The setup stores `credentials.env` and `user.session*` under `$HOME/.hermes/telegram-user/` with restricted permissions. **Do not infer that Telegram Stories are unconfigured merely because top-level `TELEGRAM_API_ID` / `TELEGRAM_API_HASH` environment variables are absent**: the publisher intentionally reads `<TELEGRAM_USER_HOME>/credentials.env`. Check the configured base directory (for this host, `/opt/data/.hermes/telegram-user`) and authorized session first. If Hermes runs in Kubernetes, first distinguish the host filesystem from the pod/PVC: a helper created at a pod path is invoked from the host through `kubectl exec -it`, not as a host-local executable. Follow `references/telegram-user-api-kubernetes.md` and derive namespace, workload, and container from manifests or live cluster state before presenting the command.
 
-Then use Telegram's user MTProto API:
+Then use Telegram's user MTProto API. Publication targets are an explicit registry, not a hard-coded peer:
 
-1. call `stories.canSendStory(inputPeerSelf)`;
-2. upload `telegram-story.mp4` using `upload.saveFilePart` and return a regular `inputFile`, even above 10 MiB;
-3. require the explicit publication audience and call `stories.sendStory` with `peer=inputPeerSelf`: use `inputPrivacyValueAllowContacts` for **для своих контактов** or `inputPrivacyValueAllowAll` for **для всех**;
-4. for **по ссылке**, do not call Telegram at all: Telegram Stories have no link-only/unlisted privacy mode; report the target as deliberately skipped;
-5. record only story ID, timestamp, media hash, expiry period, and privacy label.
+```bash
+# Discover the personal account and every channel/supergroup Telegram currently permits.
+"$BASE/.venv/bin/python" <skill-dir>/scripts/manage_telegram_channels.py list --all
+
+# Add an eligible channel to the stable publication choices.
+"$BASE/.venv/bin/python" <skill-dir>/scripts/manage_telegram_channels.py \
+  add travel @channel_username --label "Travel channel"
+
+# List the choices before every publication, or remove one later.
+"$BASE/.venv/bin/python" <skill-dir>/scripts/manage_telegram_channels.py list
+"$BASE/.venv/bin/python" <skill-dir>/scripts/manage_telegram_channels.py remove travel
+```
+
+The registry is stored at `<TELEGRAM_USER_HOME>/channels.json` with mode 0600. It stores only stable keys, labels, IDs, and usernames—not session material or API credentials. A registered channel is still rejected if it disappears from the live `stories.getChatsToSend` result.
+
+Before publishing, present all available registered targets as a selectable choice. Never infer a target from the previous publication. Then:
+
+1. resolve the selected key: `self` maps to `inputPeerSelf`; a channel key must map to an `inputPeerChannel` returned by `stories.getChatsToSend`;
+2. call `stories.canSendStory(selectedPeer)`;
+3. upload `telegram-story.mp4` using `upload.saveFilePart` and return a regular `inputFile`, even above 10 MiB;
+4. require the explicit publication audience and call `stories.sendStory` with the selected peer: personal `self` supports contacts/everyone; registered channels are public and require everyone;
+5. for personal `self` plus **по ссылке**, do not call Telegram at all: Telegram Stories have no link-only/unlisted privacy mode; report the target as deliberately skipped;
+6. record only target key/ID, story ID, timestamp, media hash, expiry period, and privacy label.
 
 Official clients force non-big file parts for Story uploads (`forceNoBigParts: true`). Telethon normally switches files above 10 MiB to `inputFileBig`, which Telegram rejects for this Story path with `MEDIA_FILE_INVALID`; do not use the default large-file upload here.
 
@@ -99,18 +117,24 @@ After the explicit **«публикуй»** command, run:
 
 ```bash
 "$BASE/.venv/bin/python" <skill-dir>/scripts/publish_telegram_story.py \
-  <episode-dir> --audience contacts --approved
+  <episode-dir> --channel self --audience contacts --approved
 
 # Or, after the user explicitly chooses «для всех»:
 "$BASE/.venv/bin/python" <skill-dir>/scripts/publish_telegram_story.py \
-  <episode-dir> --audience everyone --approved
+  <episode-dir> --channel self --audience everyone --approved
 
 # «По ссылке» is a safe no-op for Telegram and returns a structured skip result:
 "$BASE/.venv/bin/python" <skill-dir>/scripts/publish_telegram_story.py \
-  <episode-dir> --audience link --approved
+  <episode-dir> --channel self --audience link --approved
+
+# A registered channel Story is public to that channel's audience:
+"$BASE/.venv/bin/python" <skill-dir>/scripts/publish_telegram_story.py \
+  <episode-dir> --channel travel --audience everyone --approved
 ```
 
 The publisher requires a green `verification.json`, recomputes the media hash, validates the Story format, checks available Story slots, and refuses to run without `--approved`.
+
+Legacy automation may omit `--channel`; it continues to publish as the personal account (`self`) and writes both `telegram-story-publish.json` and `telegram-story-publish-self.json`. Personal-account records and stdout retain the legacy `user_id` and `username` fields alongside the expanded target metadata. New agent-driven publication must always list targets, ask the user, and pass the selected key explicitly. Publish records are replaced atomically and do not follow pre-existing destination symlinks.
 
 This is the deterministic route for personal-account Stories with either contacts-only or public visibility. The gateway's normal Telegram bot connection is not a personal user session and cannot call user MTProto methods.
 
@@ -122,7 +146,8 @@ Bot API `postStory` can post on behalf of a connected managed business account w
 
 - Preparation and preview do not authorize publishing.
 - Publish only after explicit **«публикуй»**.
-- Ask **«для своих контактов / для всех / по ссылке?»** before every publication unless the user already gave that explicit choice for the current approval. Never reuse an older package's audience.
+- List and ask for the publication target before every publication. Never reuse an older target silently.
+- For `self`, ask **«для своих контактов / для всех / по ссылке?»** unless the user already gave that explicit choice for the current approval. A channel target has only the public/everyone mode.
 - Treat **«по ссылке»** as a deliberate Telegram skip; never turn it into a public Story merely to produce a URL.
 - Before the first real story for each supported audience, perform an audience-controlled test when possible and verify it from a separate account.
 - Never store `api_hash`, confirmation codes, 2FA password, session material, bot token, or business connection payloads in manifests or chat logs.

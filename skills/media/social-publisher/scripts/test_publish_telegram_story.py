@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import sys
+import subprocess
 import unittest
 from pathlib import Path
 
@@ -7,6 +8,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 
 class StoryMediaAttributesTests(unittest.TestCase):
+    def test_legacy_cli_does_not_require_channel_before_approval_gate(self):
+        script = Path(__file__).resolve().parent / 'publish_telegram_story.py'
+        completed = subprocess.run([
+            sys.executable, str(script), 'missing-episode', '--audience', 'contacts'
+        ], text=True, capture_output=True)
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertIn('--approved is required', completed.stderr)
+        self.assertNotIn('--channel is required', completed.stderr)
+
     def test_audience_maps_to_story_privacy(self):
         from publish_telegram_story import privacy_rules_for_audience
 
@@ -15,6 +25,18 @@ class StoryMediaAttributesTests(unittest.TestCase):
         self.assertIsNone(privacy_rules_for_audience('link'))
         with self.assertRaisesRegex(ValueError, 'Unsupported audience'):
             privacy_rules_for_audience('unknown')
+
+    def test_channel_audience_is_public_only(self):
+        from publish_telegram_story import validate_target_audience
+
+        validate_target_audience('self', 'contacts')
+        validate_target_audience('self', 'everyone')
+        validate_target_audience('self', 'link')
+        validate_target_audience('travel', 'everyone')
+        with self.assertRaisesRegex(ValueError, 'require --audience everyone'):
+            validate_target_audience('travel', 'contacts')
+        with self.assertRaisesRegex(ValueError, 'require --audience everyone'):
+            validate_target_audience('travel', 'link')
 
     def test_video_has_filename_and_video_metadata(self):
         from publish_telegram_story import video_attributes
