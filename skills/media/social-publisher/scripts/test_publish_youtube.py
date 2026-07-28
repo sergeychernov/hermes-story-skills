@@ -46,6 +46,23 @@ class YouTubePlaylistTests(unittest.TestCase):
         ]
         self.assertEqual(select_playlist_id(items, 'Лягушка-путешественница'), 'travel')
 
+    def test_selected_channel_must_match_oauth_channel(self):
+        import publish_youtube
+
+        original = publish_youtube.api_json
+        publish_youtube.api_json = lambda *args, **kwargs: {
+            'items': [{'id': 'expected', 'snippet': {'title': 'Travel'}}]
+        }
+        try:
+            self.assertEqual(
+                publish_youtube.verify_authorized_channel('token', 'expected'),
+                {'id': 'expected', 'title': 'Travel'},
+            )
+            with self.assertRaisesRegex(ValueError, 'do not match'):
+                publish_youtube.verify_authorized_channel('token', 'other')
+        finally:
+            publish_youtube.api_json = original
+
     def test_rejects_missing_playlist(self):
         from publish_youtube import select_playlist_id
 
@@ -155,6 +172,7 @@ class YouTubePlaylistTests(unittest.TestCase):
             completed = subprocess.run([
                 sys.executable, str(Path(__file__).with_name('publish_youtube.py')),
                 '--video', str(paths['video.mp4']),
+                '--channel', 'current',
                 '--title-file', str(paths['title.txt']),
                 '--description-file', str(paths['description.txt']),
                 '--tags-file', str(paths['tags.txt']),

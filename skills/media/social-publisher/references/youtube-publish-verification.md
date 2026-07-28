@@ -14,7 +14,7 @@ Use this after the user has explicitly approved a YouTube publication. OAuth set
 
 ## Upload exactly once
 
-Run `scripts/publish_youtube.py` once with the approved media, metadata, and required `--audience {contacts,everyone,link}`. Capture the returned video ID and URL. The script maps `contacts` → `private`, `everyone` → `public`, and `link` → `unlisted`.
+List the registered targets, ask the user to choose one, then run `scripts/publish_youtube.py` once with the approved media, metadata, required `--channel <selected-key>`, and required `--audience {contacts,everyone,link}`. Capture the returned channel, video ID, and URL. The script verifies the selected OAuth channel before upload and maps `contacts` → `private`, `everyone` → `public`, and `link` → `unlisted`.
 
 If the request fails after upload initiation or the response is ambiguous, do **not** immediately retry. First query YouTube for the returned/known ID or otherwise rule out an already-created video. A blind retry can create a duplicate.
 
