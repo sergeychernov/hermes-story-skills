@@ -49,22 +49,22 @@ Then follow this short path:
 
 ### Concrete recipes
 
-All `--spec` paths are relative to `--root` unless a script's schema says otherwise. Start from the templates and contract in the named owner skill; use `--help` for the complete CLI.
+Pass `--spec` as a filesystem path the process can open. Most renderers read it from the current working directory, not from `--root`. From the repository checkout, use `--spec "$STORY/specs/<name>.json"`. Start from the templates and contract in the named owner skill; use `--help` for the complete CLI.
 
 | Need | Canonical owner | Concrete entrypoint |
 |---|---|---|
 | Validate story order/state | `story` | `python3 skills/media/story/scripts/validate_story.py "$STORY/story.json"` |
-| Animate one narrative photo | `still-image-animation` | `python3 skills/media/still-image-animation/scripts/animate_still.py --root "$STORY" --spec specs/still.json` |
-| Render a 2–6 photo collage scene | `animated-collage` | `python3 skills/media/animated-collage/scripts/render_collage.py --root "$STORY" --spec specs/collage.json` |
-| Combine approved scenes into one editorial beat | `scene-group` | `python3 skills/media/scene-group/scripts/render_scene_group.py --root "$STORY" --spec specs/group.json` |
-| Add or replace voiceover on a scene/group | `media-voiceover` | `python3 skills/media/media-voiceover/scripts/render_media_voiceover.py --root "$STORY" --spec specs/voiceover.json` |
-| Render a platform-specific static cover | `static-cover-collage` | `python3 skills/media/static-cover-collage/scripts/render_cover_collage.py --root "$STORY" --spec specs/cover.json` |
+| Animate one narrative photo | `still-image-animation` | `python3 skills/media/still-image-animation/scripts/animate_still.py --root "$STORY" --spec "$STORY/specs/still.json"` |
+| Render a 2–6 photo collage scene | `animated-collage` | `python3 skills/media/animated-collage/scripts/render_collage.py --root "$STORY" --spec "$STORY/specs/collage.json"` |
+| Combine approved scenes into one editorial beat | `scene-group` | `python3 skills/media/scene-group/scripts/render_scene_group.py --root "$STORY" --spec "$STORY/specs/group.json"` |
+| Add or replace voiceover on a scene/group | `media-voiceover` | `python3 skills/media/media-voiceover/scripts/render_media_voiceover.py --root "$STORY" --spec "$STORY/specs/voiceover.json"` |
+| Render a platform-specific static cover | `static-cover-collage` | `python3 skills/media/static-cover-collage/scripts/render_cover_collage.py --root "$STORY" --spec "$STORY/specs/cover.json"` |
 | Insert an approved cover frame-exactly | `shorts-assembly` | Follow `skills/media/shorts-assembly/references/platform-cover-timeline-insertion.md` and `skills/media/shorts-assembly/references/frame-exact-cover-timeline.md` |
 | Build an aspect-safe review timeline | `shorts-assembly` | Follow `skills/media/shorts-assembly/references/review-first-aspect-safe-assembly.md` and `skills/media/shorts-assembly/references/full-story-preview-assembly.md` |
-| Render a soundtrack revision | `story-soundtrack` | `python3 skills/media/story-soundtrack/scripts/render_story_score.py --root "$STORY" --spec specs/soundtrack.json` |
-| Mix source audio and score | `story-soundtrack` | `python3 skills/media/story-soundtrack/scripts/mix_story_audio.py --root "$STORY" --spec specs/soundtrack.json` |
-| Approve the chosen soundtrack revision | `story-soundtrack` | `python3 skills/media/story-soundtrack/scripts/approve_story_soundtrack.py --root "$STORY" --spec specs/soundtrack.json --approval-note "<user approval>"` |
-| Verify the locked soundtrack handoff | `story-soundtrack` | `python3 skills/media/story-soundtrack/scripts/verify_story_soundtrack.py --root "$STORY" --spec specs/soundtrack.json --require-approved-handoff` |
+| Render a soundtrack revision | `story-soundtrack` | `skills/media/story-soundtrack/scripts/run.sh render_story_score.py --root "$STORY" --spec "$STORY/specs/soundtrack.json"` |
+| Mix source audio and score | `story-soundtrack` | `skills/media/story-soundtrack/scripts/run.sh mix_story_audio.py --root "$STORY" --spec "$STORY/specs/soundtrack.json"` |
+| Approve the chosen soundtrack revision | `story-soundtrack` | `skills/media/story-soundtrack/scripts/run.sh approve_story_soundtrack.py --root "$STORY" --spec "$STORY/specs/soundtrack.json" --approval-note "<user approval>"` |
+| Verify the locked soundtrack handoff | `story-soundtrack` | `skills/media/story-soundtrack/scripts/run.sh verify_story_soundtrack.py --root "$STORY" --spec "$STORY/specs/soundtrack.json" --require-approved-handoff` |
 | Deliver a review-only Telegram copy | `shorts-assembly` | `python3 skills/media/shorts-assembly/scripts/deliver_telegram_review_video.py --input <master.mp4> --derivative-output <preview.mp4> --chat-id <id>` |
 | Publish approved package | `social-publisher` | Use `publish_youtube.py`, `publish_instagram.py`, or `publish_telegram_story.py` only after their explicit approval gate |
 
