@@ -1,7 +1,7 @@
 ---
 name: shorts-assembly
 description: Collect clips into titled 9:16 Shorts compilations.
-version: 1.5.0
+version: 1.5.1
 author: Hermes Agent
 license: MIT
 metadata:
@@ -87,7 +87,6 @@ Before assembling a mixed-media story, classify every scene as `voice`, `music`,
 
 After every audio-bearing render, compare source and export stream start/end and duration, confirm AAC/sample rate/channels, measure integrated loudness and true peak **from the final AAC/MP4**, check for clipping, and verify phrase completion from the full timeline. A PCM limiter target is not final proof: AAC can overshoot a `-1.5 dB` limiter by several tenths. If a strict `≤ -1.5 dBFS` final ceiling is required, leave encoding headroom (for example limit PCM around `-2.0 dB`) and re-measure after AAC encoding. Representative frames are not audio QA. If the user reports missing words, invalidate the previous render and manifest range, rebuild from the full preserved source first, and re-run both audio and visual QA.
 
-**Diagnose subjective timbre complaints before recomposing.** When the user describes an irritating sound by analogy («игла по пластинке», «мокрый ластик по стеклу»), do not guess that the whole genre, rhythm section, or arrangement is wrong. Export 3–5 second numbered, isolated samples of every plausible synthesized layer from the exact rejected implementation (for example bass, comping, kick, brush/noise, lead), deliver the audio files together, and let the user identify the offending component. Preserve accepted layers and change only the identified source. See `references/subjective-soundtrack-diagnosis.md`.
 
 **Report provenance must match the command path.** When a title renderer uses `--audio-already-normalized` / `-c:a copy`, its report must say that AAC was stream-copied and set `audio_processed: false`; never reuse the ingestion filter description merely because the output contains audio. Before assembly, reject contradictory reports such as “stream copied” plus “denoised/loudness normalized.”
 
@@ -95,7 +94,6 @@ After every audio-bearing render, compare source and export stream start/end and
 
 See `references/audio-routing-and-normalization.md` for class-specific filters and normalization probes. See `references/audio-routing-and-mix.md` for evidence-based scene classification, continuous full rhythm-section stems, audible speech-bed calibration and relative gain math, melody routing, “inspired by” composition boundaries, swing/pentatonic requirements, click prevention, limiter settings, and signal-level verification.
 
-**Legacy deterministic-score compatibility:** `scripts/render_pentatonic_story_score.py`, `scripts/encode_story_audio_preview.py` and their templates remain only for projects already pinned to the old contract. New soundtrack work must use `story-soundtrack`; do not create new specs against these legacy entrypoints. When migrating an existing project, preserve hashes and outputs, create a new `story-soundtrack` revision, compare sample counts and listening artifacts, then switch the manifest only after user review.
 
 **Project-script promotion gate:** before creating a repeated project-local media renderer, check whether its behavior belongs in this skill. Promote reusable implementation into `scripts/`, move story-specific choices into a versioned JSON spec, add tests/templates/reference documentation, and verify the migrated artifact against the previous revision before switching the manifest. Follow `references/promoting-project-media-scripts.md`; do not leave duplicate implementations in both the skill and project.
 
@@ -394,7 +392,6 @@ On low-power systems, do **not** use MPEG-TS or direct-MP4 stream-copy concat fo
 ## References
 
 - `references/title-preflight-and-horizontal-stills.md` — explicit drawtext wrapping preflight and Sergey's no-blur/no-stretch/no-empty-band policy for horizontal stills.
-- `references/subjective-soundtrack-diagnosis.md` — isolate numbered 3–5 second instrument samples for user-led identification of irritating timbres before recomposing.
 - `references/frame-exact-cover-timeline.md` — frame-authoritative assembly, AAC-padding trimming, exact cover-frame QA, and whole-timeline scoring.
 - `references/youtube-cover-insertion.md` — cover insertion approval and delivery checks.
 - `references/title-fit-editorial-and-rebuild-gates.md` — title-box fit, adjacent-title continuity, incidental-subject overlap policy, and proof that a corrected scene reached the rebuilt final film.

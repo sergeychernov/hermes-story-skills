@@ -1,7 +1,7 @@
 ---
 name: story-soundtrack
 description: Use when composing and mixing a story soundtrack.
-version: 1.0.1
+version: 1.0.2
 author: Hermes Curator
 license: MIT
 metadata:
@@ -80,6 +80,10 @@ Constrain every input and output under the project root. Resolve paths before ac
 - Use smooth envelopes around transitions; no automatic ducking unless explicitly requested.
 - Mix additively without hidden normalization. If using NumPy summation, report that accurately; do not claim FFmpeg `amix` was used.
 - Never use `-shortest` where it can truncate speech or timeline audio.
+
+## Subjective timbre diagnosis
+
+When the user describes an irritating sound by analogy rather than naming an instrument, diagnose before recomposing. Export short numbered isolated samples from every plausible layer of the exact rejected implementation, preserve accepted stems, and revise only the identified source. Keep absolute timeline position when the artifact may be time-dependent. Follow `references/subjective-soundtrack-diagnosis.md`.
 
 ## Source media duration policy
 
@@ -173,6 +177,7 @@ Detailed contracts:
 - `references/json-contract.md`
 - `references/revision-and-approval-flow.md`
 - `references/production-contract.md`
+- `references/subjective-soundtrack-diagnosis.md`
 - `references/tdd-log.md`
 
 ## Long-running work communication
