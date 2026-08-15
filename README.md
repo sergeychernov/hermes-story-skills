@@ -93,16 +93,22 @@ Preferred one-command runner:
 PYTHON=.venv/bin/python scripts/test_all.sh
 ```
 
-It executes the following suites explicitly:
+The default runner executes the following lightweight and medium suites explicitly:
 
 ```bash
+python3 -m unittest discover -s scripts/tests -p 'test_*.py' -v
 python3 -m unittest discover -s skills/media/still-image-animation/scripts/tests -p 'test_*.py' -v
 python3 -m unittest discover -s skills/media/story/scripts/tests -p 'test_*.py' -v
 python3 -m unittest discover -s skills/media/animated-collage/scripts/tests -p 'test_*.py' -v
 python3 -m unittest discover -s skills/media/scene-group/tests -p 'test_*.py' -v
 python3 -m unittest discover -s skills/media/media-voiceover/tests -p 'test_*.py' -v
 python3 -m unittest discover -s skills/media/static-cover-collage/scripts/tests -p 'test_*.py' -v
-python3 -m unittest discover -s skills/media/story-soundtrack/scripts/tests -p 'test_*.py' -v
 python3 -m unittest discover -s skills/media/shorts-assembly/scripts/tests -p 'test_*.py' -v
 python3 -m unittest discover -s skills/media/social-publisher/scripts -p 'test_*.py' -v
+```
+
+The long `story-soundtrack` suite is temporarily opt-in and remains available for explicit full verification:
+
+```bash
+RUN_STORY_SOUNDTRACK_TESTS=1 PYTHON=.venv/bin/python scripts/test_all.sh
 ```

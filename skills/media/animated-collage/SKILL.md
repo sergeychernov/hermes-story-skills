@@ -1,7 +1,7 @@
 ---
 name: animated-collage
 description: Use when rendering 2-6 photos as an animated collage.
-version: 1.5.0
+version: 1.5.1
 author: Sergey Chernov / Hermes Agent
 license: MIT
 metadata:

@@ -8,14 +8,28 @@ This note records the evidence used to extract `animated-collage` from one-off r
 - @session:default/20260802_033216_64054c9d — birthday Short, dense table/trampoline collages, title obstruction, direction, empty-space and animation feedback.
 - @session:default/20260809_084005_6e439354 — Beijing story and the reproducible elevator, metro, garden, island, park-exit and night collages.
 
-## Project renderers compared
+## Project renderer layouts compared
 
-- `render_animated_collage.py`: four staggered cards, architectural search beat.
-- `render_metro_collage.py`: asymmetric five-panel layout (`720+360`, full-width center, `540+540`).
-- `render_botanical_garden_collage.py`: five-panel `2+1+2`, large landscape center.
-- `render_island_temple_collage.py`: six-panel `2x3` route sequence.
-- `render_park_exit_collage.py`: five-panel `2+2+1`, face-free full-width title panel.
-- `assemble_no_fairy_collage.py`: despite the filename, this script assembles a version with a collage segment removed; it is not a reusable collage renderer.
+Reusable renderer names describe motion and geometry rather than the project subject:
+
+```text
+<direction>-<row>-<row>[-<row>...].py
+```
+
+- `u` means a dominant upward reveal;
+- `p` means a portrait cell and `l` means a landscape cell;
+- every hyphen after the direction separates canvas rows;
+- letters inside one row list its cells from left to right.
+
+The historical layouts therefore map to reusable names:
+
+- `u-pp-pp.py`: four staggered portrait cards in two rows.
+- `u-lp-l-pp.py`: asymmetric five-panel layout (`720+360`, full-width center, `540+540`).
+- `u-pp-l-pp.py`: five-panel `2+1+2`, with a large landscape center row.
+- `u-pp-pp-pp.py`: six-panel `2x3` route sequence.
+- `u-pp-pp-l.py`: five-panel `2+2+1`, with a face-free full-width landscape title panel.
+
+The historical assembly-only script that removed a collage segment is deliberately excluded: assembling an edited story variant is not a reusable collage renderer.
 
 ## Repeated successful engineering pattern
 
