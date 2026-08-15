@@ -24,6 +24,7 @@ from story_soundtrack_contract import (  # noqa: E402
     resolve_under,
     validate_timeline_agreement,
 )
+from story_soundtrack_lock import revision_lock  # noqa: E402
 
 MEDIA_SUFFIXES = {".wav", ".m4a", ".mp4", ".aac", ".mov", ".mkv"}
 CODEC_PADDING_MAX_SAMPLES = 1024
@@ -472,6 +473,11 @@ def _refuse_mix_overwrite_without_flag(validated: dict, overwrite: bool) -> None
 
 
 def mix_audio(validated: dict, overwrite: bool = False) -> dict:
+    with revision_lock(validated):
+        return _mix_audio_locked(validated, overwrite)
+
+
+def _mix_audio_locked(validated: dict, overwrite: bool = False) -> dict:
     _refuse_if_approval_locked(validated)
     _refuse_mix_overwrite_without_flag(validated, overwrite)
     root = validated["root"]

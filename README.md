@@ -11,8 +11,7 @@ Composable Hermes skills for small media stories:
 - `static-cover-collage` — platform-specific natural and collage covers;
 - `story-soundtrack` — frame-locked composition, source mix, approval and handoff;
 - `shorts-assembly` — final visual assembly and exact approved-audio mux;
-- `social-publisher` — gated external publication;
-- `travel-social-publisher` — compatibility facade for existing archives.
+- `social-publisher` — gated external publication.
 
 These packages are the media dependency graph delegated by `story`. They are
 kept together so a checkout does not silently fall back to stale globally
@@ -43,7 +42,7 @@ ffprobe -version
 
 ### Title overlays on rendered scenes
 
-`still-image-animation` and `travel-social-publisher` can burn in a `title` with FFmpeg `drawtext`. Both must be available:
+`still-image-animation` can burn in a `title` with FFmpeg `drawtext`. Both the font and filter must be available:
 
 1. **A system font** — the renderer searches common Linux and macOS paths (DejaVu, Liberation, Noto, Arial, and similar).
 2. **FFmpeg built with `drawtext`** — without it, scenes still render but text is skipped silently.
@@ -106,5 +105,4 @@ python3 -m unittest discover -s skills/media/static-cover-collage/scripts/tests 
 python3 -m unittest discover -s skills/media/story-soundtrack/scripts/tests -p 'test_*.py' -v
 python3 -m unittest discover -s skills/media/shorts-assembly/scripts/tests -p 'test_*.py' -v
 python3 -m unittest discover -s skills/media/social-publisher/scripts -p 'test_*.py' -v
-python3 -m unittest discover -s skills/media/travel-social-publisher/scripts -p 'test_*.py' -v
 ```

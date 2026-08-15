@@ -32,6 +32,33 @@ class TelegramDeliveryDiagnosticsTests(unittest.TestCase):
             {"TELEGRAM_BOT_TOKEN": "token", "TELEGRAM_PROXY": "socks5://proxy"},
         )
 
+    def test_gateway_environment_parser_rejects_invalid_utf8_allowlisted_values(self):
+        module = load_module()
+        self.assertEqual(
+            module.parse_gateway_environment(
+                b"TELEGRAM_BOT_TOKEN=token\0TELEGRAM_PROXY=socks5://bad-\xff\0"
+            ),
+            {"TELEGRAM_BOT_TOKEN": "token"},
+        )
+        self.assertEqual(
+            module.parse_gateway_environment(b"TELEGRAM_BOT_TOKEN=bad-\xff\0"),
+            {},
+        )
+
+    def test_gateway_argv_requires_real_entrypoint_and_exact_subcommand_tokens(self):
+        module = load_module()
+        self.assertTrue(module.is_gateway_argv([
+            "/opt/hermes/.venv/bin/python3", "/opt/hermes/.venv/bin/hermes",
+            "gateway", "run", "--replace",
+        ]))
+        self.assertTrue(module.is_gateway_argv(["/usr/local/bin/hermes", "gateway", "run"]))
+        self.assertFalse(module.is_gateway_argv([
+            "python3", "-c", "import time; time.sleep(60)", "hermes gateway run",
+        ]))
+        self.assertFalse(module.is_gateway_argv([
+            "python3", "-c", "import time; time.sleep(60)", "hermes", "gateway", "run",
+        ]))
+
     def test_classifies_latest_failure_for_exact_artifact(self):
         module = load_module()
         with tempfile.TemporaryDirectory() as td:
@@ -56,6 +83,18 @@ class TelegramDeliveryDiagnosticsTests(unittest.TestCase):
             log.write_text(
                 "Failed to send video: Timed out\n"
                 f"send_video fallback: native video send unavailable for {artifact}.v2.mp4\n",
+                encoding="utf-8",
+            )
+            self.assertIsNone(module.classify_latest_failure(log, artifact)["classification"])
+
+    def test_diagnostic_rejects_malformed_fallback_line(self):
+        module = load_module()
+        with tempfile.TemporaryDirectory() as td:
+            log = Path(td) / "gateway.log"
+            artifact = Path("/tmp/review.mp4")
+            log.write_text(
+                "Failed to send video: Timed out\n"
+                f"unrelated payload containing send_video fallback and ending for {artifact}\n",
                 encoding="utf-8",
             )
             self.assertIsNone(module.classify_latest_failure(log, artifact)["classification"])
@@ -123,6 +162,25 @@ class TelegramDeliveryDiagnosticsTests(unittest.TestCase):
             self.assertEqual(victim.read_text(encoding="utf-8"), "immutable")
             self.assertEqual(json.loads(report.read_text(encoding="utf-8")), {"status": "ok"})
             self.assertEqual(report.stat().st_mode & 0o777, 0o600)
+
+    def test_report_path_rejects_final_symlink_and_media_aliases(self):
+        module = load_module()
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            source = root / "master.mp4"
+            delivery = root / "review.mp4"
+            victim = root / "victim.json"
+            source.write_bytes(b"master")
+            delivery.write_bytes(b"review")
+            victim.write_text("immutable", encoding="utf-8")
+            report_link = root / "report.json"
+            report_link.symlink_to(victim)
+            with self.assertRaisesRegex(RuntimeError, "symlink"):
+                module.validated_report_path(report_link, source, delivery)
+            for alias in (source, delivery):
+                with self.subTest(alias=alias), self.assertRaisesRegex(RuntimeError, "aliases"):
+                    module.validated_report_path(alias, source, delivery)
+            self.assertEqual(victim.read_text(encoding="utf-8"), "immutable")
 
     def test_create_derivative_reuses_matching_verified_copy(self):
         module = load_module()

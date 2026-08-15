@@ -322,6 +322,31 @@ class InstagramValidationTests(unittest.TestCase):
         registry = publication_lock_path(record, "renamed-account", "stable-user-id", "video-sha")
         self.assertEqual(legacy, registry)
 
+    def test_registry_credentials_are_snapshotted_once_before_lock(self):
+        import publish_instagram
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            paths = _make_package(root)
+            args = argparse.Namespace(
+                approved=True, account="travel", video=paths["video"],
+                verification=paths["verification"], record=root / "instagram-publish-travel.json",
+            )
+            account = {"user_id": "stable-user", "username": "frog"}
+            credentials = {
+                "INSTAGRAM_ACCESS_TOKEN": "token",
+                "INSTAGRAM_USER_ID": "stable-user",
+            }
+            with mock.patch.object(
+                publish_instagram, "credentials_for_account", return_value=(account, credentials)
+            ) as lookup, mock.patch.object(
+                publish_instagram, "_publish_with_lock_held", return_value={"ok": True}
+            ) as locked:
+                publish_instagram.publish(args)
+            lookup.assert_called_once_with("travel")
+            self.assertEqual(locked.call_args.kwargs["account_snapshot"], account)
+            self.assertEqual(locked.call_args.kwargs["credentials_snapshot"], credentials)
+
     def test_poll_status_handles_error_and_timeout(self):
         import publish_instagram
 

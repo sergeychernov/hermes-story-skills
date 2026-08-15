@@ -33,6 +33,23 @@ class LayoutTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "aliases source"):
                 mod.render(root, raw)
 
+    def test_derived_report_may_not_alias_a_source(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            photos = root / "photos"
+            photos.mkdir()
+            for name in ("out-report.json", "1.jpg", "2.jpg"):
+                (photos / name).write_bytes(b"source")
+            raw = {
+                "schema_version": 1, "output": "photos/out.mp4",
+                "width": 1080, "height": 1920, "fps": 30, "duration": 3.0,
+                "layout": "2+1", "animation": "none",
+                "sources": [{"path": "photos/out-report.json"}, {"path": "photos/1.jpg"}, {"path": "photos/2.jpg"}],
+                "title": {"text": "", "position": "lower_fifth"}, "overwrite": True,
+            }
+            with self.assertRaisesRegex(ValueError, "report aliases source"):
+                mod.render(root, raw)
+
     def test_cross_skill_imports_fail_closed_in_all_entrypoints(self):
         module_file = getattr(mod, "__file__", None)
         assert module_file
@@ -40,7 +57,6 @@ class LayoutTests(unittest.TestCase):
         scripts = (
             Path(module_file),
             media_root / "still-image-animation" / "scripts" / "still_image_animation.py",
-            media_root / "travel-social-publisher" / "scripts" / "build_episode.py",
         )
         for script in scripts:
             with self.subTest(script=script.name):

@@ -22,6 +22,10 @@ OFFICIAL_CONTRACT_URL = "https://core.telegram.org/bots/api#sendvideo"
 DEFAULT_GATEWAY_LOG = Path("/opt/data/logs/gateway.log")
 GATEWAY_LOG_TAIL_BYTES = 1024 * 1024
 TELEGRAM_ENV_ALLOWLIST = ("TELEGRAM_BOT_TOKEN", "TELEGRAM_PROXY")
+GATEWAY_LOG_PREFIX_RE = (
+    r"(?:\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3} "
+    r"(?:DEBUG|INFO|WARNING|ERROR|CRITICAL) [A-Za-z0-9_.]+: \[Telegram\] )?"
+)
 
 
 def run(cmd: list[str], *, capture: bool = False) -> subprocess.CompletedProcess[str]:
@@ -83,13 +87,19 @@ def classify_latest_failure(log_path: Path, artifact: Path) -> dict[str, Any]:
             raw = b""
     lines = raw.decode("utf-8", errors="replace").splitlines()
     artifact_text = str(artifact)
+    fallback_re = re.compile(
+        rf"{GATEWAY_LOG_PREFIX_RE}send_video fallback: native video send unavailable for "
+        rf"{re.escape(artifact_text)}"
+    )
+    failure_re = re.compile(rf"{GATEWAY_LOG_PREFIX_RE}Failed to send video: (?P<error>.+)")
     matches: list[str] = []
     for index, line in enumerate(lines):
-        if "send_video fallback" not in line or not line.rstrip().endswith(f" for {artifact_text}"):
+        if fallback_re.fullmatch(line) is None:
             continue
         for previous in reversed(lines[max(0, index - 8):index]):
-            if "Failed to send video:" in previous:
-                matches.append(previous.split("Failed to send video:", 1)[1].strip())
+            failure = failure_re.fullmatch(previous)
+            if failure is not None:
+                matches.append(failure.group("error").strip())
                 break
     if not matches:
         return result
@@ -174,16 +184,41 @@ def parse_gateway_environment(raw: bytes) -> dict[str, str]:
             continue
         key, value = item.split(b"=", 1)
         if key in allowed:
-            result[allowed[key]] = value.decode("utf-8", errors="replace")
+            try:
+                decoded = value.decode("utf-8")
+            except UnicodeDecodeError:
+                continue
+            result[allowed[key]] = decoded
     return result
+
+
+def is_gateway_argv(argv: list[str]) -> bool:
+    if not argv:
+        return False
+    executable = Path(argv[0]).name
+    if executable == "hermes":
+        command_index = 0
+    elif executable.startswith("python") and len(argv) > 1:
+        entrypoint = Path(argv[1])
+        if not entrypoint.is_absolute() or entrypoint.name != "hermes":
+            return False
+        command_index = 1
+    else:
+        return False
+    return argv[command_index + 1:command_index + 3] == ["gateway", "run"]
+
+
+def _read_process_argv(pid: int) -> list[str]:
+    raw = Path(f"/proc/{pid}/cmdline").read_bytes()
+    return [os.fsdecode(token) for token in raw.split(b"\0") if token]
 
 
 def _is_gateway_process(pid: int) -> bool:
     try:
-        cmdline = Path(f"/proc/{pid}/cmdline").read_bytes().replace(b"\0", b" ")
+        argv = _read_process_argv(pid)
     except (FileNotFoundError, PermissionError, ProcessLookupError):
         return False
-    return b"hermes gateway run" in cmdline
+    return is_gateway_argv(argv)
 
 
 def find_gateway_environment(explicit_pid: int | None) -> dict[str, str]:
@@ -195,10 +230,10 @@ def find_gateway_environment(explicit_pid: int | None) -> dict[str, str]:
             if not entry.name.isdigit():
                 continue
             try:
-                cmdline = (entry / "cmdline").read_bytes().replace(b"\0", b" ")
+                argv = _read_process_argv(int(entry.name))
             except (FileNotFoundError, PermissionError, ProcessLookupError):
                 continue
-            if b"hermes gateway run" in cmdline:
+            if is_gateway_argv(argv):
                 pids.append(int(entry.name))
     for pid in sorted(pids, reverse=True):
         try:
@@ -212,6 +247,23 @@ def find_gateway_environment(explicit_pid: int | None) -> dict[str, str]:
     if env.get("TELEGRAM_BOT_TOKEN"):
         return env
     raise RuntimeError("TELEGRAM_BOT_TOKEN unavailable in environment or live gateway process")
+
+
+def validated_report_path(raw_path: Path, source: Path, delivery: Path) -> Path:
+    path = raw_path.expanduser()
+    if not path.is_absolute():
+        path = Path.cwd() / path
+    path = path.parent.resolve() / path.name
+    if path.is_symlink():
+        raise RuntimeError(f"report path must not be a symlink: {path}")
+    resolved = path.resolve(strict=False)
+    for media in (source.resolve(), delivery.resolve()):
+        aliases = resolved == media
+        if path.exists() and media.exists():
+            aliases = aliases or os.path.samefile(path, media)
+        if aliases:
+            raise RuntimeError(f"report path aliases media input: {path}")
+    return path
 
 
 def write_report(path: Path, report: dict[str, Any]) -> None:
@@ -384,7 +436,11 @@ def main() -> int:
 
     media = preflight(delivery)
     diagnosis = classify_latest_failure(args.gateway_log, delivery)
-    report_path = (args.report or Path(str(delivery) + ".telegram-delivery.report.json")).resolve()
+    report_path = validated_report_path(
+        args.report or Path(str(delivery) + ".telegram-delivery.report.json"),
+        source,
+        delivery,
+    )
     report: dict[str, Any] = {
         "schema_version": 1,
         "status": "preflight-ok",

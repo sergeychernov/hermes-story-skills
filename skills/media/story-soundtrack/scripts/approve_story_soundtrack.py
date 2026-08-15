@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 import argparse
-import fcntl
 import hashlib
 import json
 import os
 import sys
-from contextlib import contextmanager
+
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -17,6 +16,7 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 from story_soundtrack_contract import ContractError, load_and_validate_spec, resolve_under  # noqa: E402
+from story_soundtrack_lock import revision_lock  # noqa: E402
 from verify_story_soundtrack import _verify_aggregate_report  # noqa: E402
 
 
@@ -132,18 +132,6 @@ def _commit_approval_transaction(
             handoff_temp.unlink(missing_ok=True)
 
 
-@contextmanager
-def _approval_lock(path: Path):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd = os.open(path, os.O_CREAT | os.O_RDWR, 0o600)
-    try:
-        fcntl.flock(fd, fcntl.LOCK_EX)
-        yield
-    finally:
-        fcntl.flock(fd, fcntl.LOCK_UN)
-        os.close(fd)
-
-
 def _load_aggregate_report(report_path: Path) -> dict:
     report = json.loads(report_path.read_text(encoding="utf-8"))
     if report.get("kind") != "story_soundtrack_aggregate":
@@ -199,8 +187,7 @@ def approve_soundtrack(
     paths = validated["resolved_paths"]
     approval_path = paths["approval_json"]
     handoff_path = paths["handoff_json"]
-    lock_path = approval_path.with_name(f".{approval_path.name}.lock")
-    with _approval_lock(lock_path):
+    with revision_lock(validated):
         if _recover_approval_transaction(approval_path, handoff_path):
             return {
                 "approval": json.loads(approval_path.read_text(encoding="utf-8")),

@@ -15,7 +15,6 @@ suites=(
   skills/media/story-soundtrack/scripts/tests
   skills/media/shorts-assembly/scripts/tests
   skills/media/social-publisher/scripts
-  skills/media/travel-social-publisher/scripts
 )
 
 for suite in "${suites[@]}"; do

@@ -99,8 +99,6 @@ Only when `render_ready: true`:
 - split longer outputs at semantic boundaries;
 - verify exact scene order, titles, audio boundaries, dimensions, duration, hashes, and representative frames.
 
-During migration, the rendering portion of `travel-social-publisher` may be used as a compatibility adapter, but its travel assumptions and publishing steps do not become part of this skill.
-
 ### 6. Soundtrack is an independent production and approval flow
 
 Do not compose, route or mix music inside `story` or `shorts-assembly`. Once the visual timeline is frame-locked, load `story-soundtrack` and pass it the exact timeline plus an evidence-based JSON map of source audio, themes, style and declared climax.

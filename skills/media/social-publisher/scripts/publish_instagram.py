@@ -640,10 +640,12 @@ def publish(args, *, api_opener=None, media_opener=None, resolver=None, sleeper=
     try:
         video_sha256 = verify_local_package(args.video, args.verification)
         if args.account:
-            selected_account, _ = credentials_for_account(args.account)
+            selected_account, credentials = credentials_for_account(args.account)
             user_id = selected_account["user_id"]
         else:
-            user_id = legacy_environment_credentials()["INSTAGRAM_USER_ID"]
+            selected_account = None
+            credentials = legacy_environment_credentials()
+            user_id = credentials["INSTAGRAM_USER_ID"]
     except ValueError as exc:
         raise SystemExit(str(exc)) from None
     record_path = resolve_record_path(args.video, args.record, args.account)
@@ -656,10 +658,17 @@ def publish(args, *, api_opener=None, media_opener=None, resolver=None, sleeper=
             resolver=resolver,
             sleeper=sleeper,
             monotonic=monotonic,
+            account_snapshot=dict(selected_account) if selected_account else None,
+            credentials_snapshot=dict(credentials),
+            expected_video_sha256=video_sha256,
         )
 
 
-def _publish_with_lock_held(args, *, api_opener=None, media_opener=None, resolver=None, sleeper=time.sleep, monotonic=time.monotonic) -> dict:
+def _publish_with_lock_held(
+    args, *, api_opener=None, media_opener=None, resolver=None,
+    sleeper=time.sleep, monotonic=time.monotonic,
+    account_snapshot=None, credentials_snapshot=None, expected_video_sha256=None,
+) -> dict:
     if not args.approved:
         raise SystemExit("Refusing publication without explicit --approved after the user command")
     if resolver is None:
@@ -669,6 +678,8 @@ def _publish_with_lock_held(args, *, api_opener=None, media_opener=None, resolve
 
     try:
         video_sha256 = verify_local_package(args.video, args.verification)
+        if expected_video_sha256 is not None and video_sha256 != expected_video_sha256:
+            raise ValueError("verified video changed while waiting for publication lock")
         caption = read_caption(args.caption_file)
     except ValueError as exc:
         raise SystemExit(str(exc)) from None
@@ -682,11 +693,14 @@ def _publish_with_lock_held(args, *, api_opener=None, media_opener=None, resolve
     expected_username: str | None = None
     try:
         if account_key:
-            selected_account, credentials = credentials_for_account(account_key)
+            if account_snapshot is None or credentials_snapshot is None:
+                selected_account, credentials = credentials_for_account(account_key)
+            else:
+                selected_account, credentials = account_snapshot, credentials_snapshot
             user_id = selected_account["user_id"]
             expected_username = selected_account["username"]
         else:
-            credentials = legacy_environment_credentials()
+            credentials = credentials_snapshot or legacy_environment_credentials()
             user_id = credentials["INSTAGRAM_USER_ID"]
     except ValueError as exc:
         raise SystemExit(str(exc)) from None

@@ -25,6 +25,7 @@ from story_soundtrack_contract import (  # noqa: E402
     resolve_layer_mapping,
     validate_timeline_agreement,
 )
+from story_soundtrack_lock import revision_lock  # noqa: E402
 
 PITCH_COLLECTION = ("D", "E", "F#", "A", "B")
 MIDI = {
@@ -369,6 +370,11 @@ def _refuse_if_approval_locked(validated: dict) -> None:
 
 
 def render_score(validated: dict, overwrite: bool = False) -> dict:
+    with revision_lock(validated):
+        return _render_score_locked(validated, overwrite)
+
+
+def _render_score_locked(validated: dict, overwrite: bool = False) -> dict:
     _refuse_if_approval_locked(validated)
     if validated["state"] != "PLANNED":
         raise SystemExit(

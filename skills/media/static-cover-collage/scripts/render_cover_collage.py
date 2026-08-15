@@ -185,6 +185,7 @@ def render_collage(root,s):
     validate_spec_structure(s); cells=resolve_layout_cells(s);validate_roles_against_cells(cells,s["sources"]); px=normalized_to_pixel_cells(cells,s["width"],s["height"]); font=discover_dejavu_bold(); out=resolve_under_root(root,s["output"]); rep=report_path_for(out)
     source_paths=[resolve_under_root(root,x["path"]) for x in s["sources"]]
     if out in source_paths:raise SpecError("output aliases source")
+    if rep.resolve(strict=False) in source_paths or any(rep.exists() and os.path.samefile(rep,p) for p in source_paths):raise SpecError("report aliases source")
     if not s["overwrite"] and (out.exists() or rep.exists()):raise SpecError("output/report exists")
     colors=dict(DEFAULT_COLORS);colors.update(s.get("colors",{})); role={x["role"]:x for x in s["sources"]}; hashes={};geoms={};text_boxes=[];canvas=Image.new("RGB",(s["width"],s["height"]),(0,0,0))
     for c in px:
@@ -229,6 +230,7 @@ def render_natural_text(canvas,text,colors,fontpath,safe,anchor_x=.5):
 def render_natural_cover(root,s):
     validate_natural_spec(s);out=resolve_under_root(root,s["output"]);rep=report_path_for(out);bg=resolve_under_root(root,s["background"])
     if out==bg:raise SpecError("output aliases background")
+    if rep.resolve(strict=False)==bg or (rep.exists() and os.path.samefile(rep,bg)):raise SpecError("report aliases background")
     if not bg.is_file():raise SpecError("background not found")
     if not s["overwrite"] and (out.exists() or rep.exists()):raise SpecError("output/report exists")
     with Image.open(bg) as im:canvas=cover_crop_image(im.convert("RGB"),s["width"],s["height"],s["focus_x"],s["focus_y"])

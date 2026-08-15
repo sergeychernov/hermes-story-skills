@@ -1050,6 +1050,13 @@ def render(root: Path, raw: dict[str, Any]) -> dict[str, Any]:
     source_paths = [safe_path(root, src["path"], must_exist=True) for src in spec["sources"]]
     if output in source_paths:
         raise ValueError(f"output aliases source: {output.relative_to(root)}")
+    report_path = output.with_name(f"{output.stem}-report.json")
+    for source_path in source_paths:
+        aliases = report_path.resolve(strict=False) == source_path.resolve()
+        if report_path.exists():
+            aliases = aliases or os.path.samefile(report_path, source_path)
+        if aliases:
+            raise ValueError(f"report aliases source: {source_path.relative_to(root)}")
     title_text = str(spec["title"].get("text", "")).strip()
     layout, order = choose_layout(len(source_paths), spec["sources"], title_text, spec["layout"])
     ordered_sources = [spec["sources"][i] for i in order]
@@ -1313,7 +1320,6 @@ def render(root: Path, raw: dict[str, Any]) -> dict[str, Any]:
     }
     if overlap_meta is not None:
         report["overlap"] = overlap_meta
-    report_path = output.with_name(f"{output.stem}-report.json")
     temp_report = report_path.with_name(f".{report_path.name}.{os.getpid()}.tmp")
     temp_report.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     temp_report.replace(report_path)

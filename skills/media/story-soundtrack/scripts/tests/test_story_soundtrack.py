@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import inspect
 import json
 import shutil
 import subprocess
@@ -43,6 +44,8 @@ from mix_story_audio import (  # noqa: E402
     write_pcm16,
 )
 import approve_story_soundtrack as approve_module  # noqa: E402
+import mix_story_audio as mix_module  # noqa: E402
+import render_story_score as render_module  # noqa: E402
 from approve_story_soundtrack import approve_soundtrack  # noqa: E402
 from verify_story_soundtrack import (  # noqa: E402
     EXACT_ALLOWED_OPS,
@@ -55,6 +58,17 @@ DEMO_FIXTURE = SKILL_ROOT / "assets" / "demo"
 DEMO_SPEC = DEMO_FIXTURE / "spec-v1.json"
 PYTHON = sys.executable
 FFMPEG_AVAILABLE = shutil.which("ffmpeg") is not None
+
+
+class RevisionLockTests(unittest.TestCase):
+    def test_render_mix_and_approval_share_one_revision_lock(self):
+        for function in (
+            render_module.render_score,
+            mix_module.mix_audio,
+            approve_module.approve_soundtrack,
+        ):
+            with self.subTest(function=function.__name__):
+                self.assertIn("with revision_lock(validated)", inspect.getsource(function))
 
 
 def base_spec() -> dict:

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import os
+import multiprocessing
 import stat
 import subprocess
 import sys
@@ -18,6 +19,14 @@ from instagram_account_registry import (
     remove_account,
     upsert_account,
 )
+
+
+def concurrent_upsert(start, registry: str, credentials: str, index: int) -> None:
+    start.wait()
+    upsert_account(
+        f"account-{index}", f"Account {index}", str(10000 + index),
+        f"user_{index}", Path(credentials), Path(registry),
+    )
 
 
 class InstagramAccountRegistryTests(unittest.TestCase):
@@ -49,6 +58,24 @@ class InstagramAccountRegistryTests(unittest.TestCase):
         self.credentials.chmod(0o644)
         with self.assertRaisesRegex(ValueError, "group/others"):
             credentials_for_account("travel", self.registry)
+
+    def test_concurrent_upserts_do_not_lose_successful_updates(self):
+        context = multiprocessing.get_context("fork")
+        start = context.Event()
+        processes = [
+            context.Process(
+                target=concurrent_upsert,
+                args=(start, str(self.registry), str(self.credentials), index),
+            )
+            for index in range(16)
+        ]
+        for process in processes:
+            process.start()
+        start.set()
+        for process in processes:
+            process.join(timeout=10)
+            self.assertEqual(process.exitcode, 0)
+        self.assertEqual(len(load_registry(self.registry)["accounts"]), 16)
 
     def test_rejects_duplicate_user_ids(self):
         upsert_account("one", "One", "12345", "one_user", self.credentials, self.registry)

@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import json
+import fcntl
 import os
 import re
 import stat
 import tempfile
+from contextlib import contextmanager
 from pathlib import Path
 
 KEY_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
@@ -75,6 +77,22 @@ def save_registry(data: dict, path: Path | None = None) -> Path:
     return path
 
 
+@contextmanager
+def registry_transaction(path: Path):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.parent.chmod(0o700)
+    lock_path = path.with_name(f".{path.name}.lock")
+    flags = os.O_CREAT | os.O_RDWR | getattr(os, "O_NOFOLLOW", 0)
+    fd = os.open(lock_path, flags, 0o600)
+    try:
+        os.fchmod(fd, 0o600)
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        yield
+    finally:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        os.close(fd)
+
+
 def upsert_account(
     key: str,
     label: str,
@@ -91,10 +109,6 @@ def upsert_account(
     if not label or not user_id or not username:
         raise ValueError("Account label, user ID, and username are required")
     user_id_str = str(user_id)
-    data = load_registry(path)
-    for item in data["accounts"]:
-        if item["user_id"] == user_id_str and item["key"] != key:
-            raise ValueError(f"Duplicate Instagram user ID in registry: {user_id_str}")
     entry = {
         "key": key,
         "label": label,
@@ -102,22 +116,30 @@ def upsert_account(
         "username": username,
         "credentials_file": str(credentials_file.expanduser().resolve()),
     }
-    data["accounts"] = sorted(
-        [item for item in data["accounts"] if item["key"] != key] + [entry],
-        key=lambda item: item["key"],
-    )
-    save_registry(data, path)
+    registry = path or registry_path()
+    with registry_transaction(registry):
+        data = load_registry(registry)
+        for item in data["accounts"]:
+            if item["user_id"] == user_id_str and item["key"] != key:
+                raise ValueError(f"Duplicate Instagram user ID in registry: {user_id_str}")
+        data["accounts"] = sorted(
+            [item for item in data["accounts"] if item["key"] != key] + [entry],
+            key=lambda item: item["key"],
+        )
+        save_registry(data, registry)
     return entry
 
 
 def remove_account(key: str, path: Path | None = None) -> bool:
-    data = load_registry(path)
-    remaining = [item for item in data["accounts"] if item["key"] != key]
-    if len(remaining) == len(data["accounts"]):
-        return False
-    data["accounts"] = remaining
-    save_registry(data, path)
-    return True
+    registry = path or registry_path()
+    with registry_transaction(registry):
+        data = load_registry(registry)
+        remaining = [item for item in data["accounts"] if item["key"] != key]
+        if len(remaining) == len(data["accounts"]):
+            return False
+        data["accounts"] = remaining
+        save_registry(data, registry)
+        return True
 
 
 def get_account(key: str, path: Path | None = None) -> dict:
