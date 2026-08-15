@@ -21,62 +21,47 @@ By default, durable story archives live under the domain-neutral `~/stories/YYYY
 
 ## Shorts editing workflow
 
-### Quick how-to: build one story
+### Quick how-to: make a Short in chat
 
-Use one story root and keep every spec, report, approval, and derived artifact under it:
+1. **Upload the source media.** Send the original video clips and photos in the best available quality. If order matters, send the files in that order or label them `1`, `2`, `3`. You may also upload your own music, narration, logo, or a preferred cover image.
+2. **Describe the result in one message.** Say what the Short is about, where it will be published, the desired duration, language, tone, and anything that must be preserved. For example:
 
-```bash
-export STORY="$HOME/stories/YYYY-MM-DD-topic"
-mkdir -p "$STORY"/{originals,normalized,specs,scenes,covers,soundtrack,renders,reports}
-```
+   > Make a YouTube Short under 60 seconds. Use the files in upload order. Keep the original speech, do not cut the camera pans, animate the two photos as one collage, and propose short Russian titles.
 
-Then follow this short path:
+3. **Review the proposed story plan.** The assistant should return the scene order, approximate duration, title text, treatment of each photo/video, source-audio policy, and required platform covers. Correct the plan before rendering.
+4. **Approve scene previews.** Review each scene as a short MP4. Approve or request changes to crop, motion, title, duration, and voiceover. A contact sheet alone is not scene approval.
+5. **Approve covers separately.** Ask for only the platforms you need. A YouTube thumbnail, Instagram cover, and Telegram first frame are different artifacts; approving one does not approve the others.
+6. **Choose the audio treatment.** You can:
+   - keep only the original clip audio;
+   - upload a music track and say where original speech/sounds must remain audible;
+   - ask for generated background music and describe mood, pace, and instruments;
+   - upload narration or ask to add voiceover to selected scenes;
+   - ask for denoise, but the original audio must remain unchanged and the cleaned version must be reviewed separately.
+7. **Approve the audio mix before final video assembly.** Listen to the mixed audio or soundtrack revision with its declared scene timing. Request gain, music, or source-audio changes here—not after final mux.
+8. **Ask for the final master.** Once scenes, covers, and audio are approved, say which approved cover belongs in the timeline and request final assembly. Review the delivered video from beginning to end.
+9. **Approve publication explicitly.** Delivery in chat is not permission to publish. Name the platform, account/channel, audience, metadata, and exact approved master when asking to publish.
 
-1. Copy uploads unchanged into `originals/`; create `story.json` with scene order and approval state.
-2. Validate the manifest:
+A useful compact first message is:
 
-   ```bash
-   .venv/bin/python skills/media/story/scripts/validate_story.py "$STORY/story.json"
-   ```
+> Build a 9:16 Short for `<platform>`, up to `<duration>`. The files are in `<order>`. The story is `<one sentence>`. Keep `<speech/sounds/movements>`. Use `<uploaded/generated/no>` music. Put `<title idea>` on `<scenes/cover>`. First show me the scene plan and titles; do not publish.
 
-3. Normalize each real video once. Approve a title, then render every scene through the matching recipe below.
-4. Review each scene as an MP4. Correct and approve scenes before assembling the whole film.
-5. Render and approve each requested platform cover separately.
-6. Build the zero-origin, CFR visual timeline with exact scene/cover frame counts.
-7. Render, mix, review, and approve soundtrack against that frozen timeline.
-8. Mux the approved audio handoff without additional audio processing; fully verify the final master.
-9. Create review-only transport copies if needed. Publish only after explicit package approval.
+### Concrete user recipes
 
-### Concrete recipes
-
-Pass `--spec` as a filesystem path the process can open. Most renderers read it from the current working directory, not from `--root`. From the repository checkout, use `--spec "$STORY/specs/<name>.json"`. Start from the templates and contract in the named owner skill; use `--help` for the complete CLI.
-
-| Need | Canonical owner | Concrete entrypoint |
-|---|---|---|
-| Validate story order/state | `story` | `python3 skills/media/story/scripts/validate_story.py "$STORY/story.json"` |
-| Animate one narrative photo | `still-image-animation` | `python3 skills/media/still-image-animation/scripts/animate_still.py --root "$STORY" --spec "$STORY/specs/still.json"` |
-| Render a 2–6 photo collage scene | `animated-collage` | `python3 skills/media/animated-collage/scripts/render_collage.py --root "$STORY" --spec "$STORY/specs/collage.json"` |
-| Combine approved scenes into one editorial beat | `scene-group` | `python3 skills/media/scene-group/scripts/render_scene_group.py --root "$STORY" --spec "$STORY/specs/group.json"` |
-| Add or replace voiceover on a scene/group | `media-voiceover` | `python3 skills/media/media-voiceover/scripts/render_media_voiceover.py --root "$STORY" --spec "$STORY/specs/voiceover.json"` |
-| Render a platform-specific static cover | `static-cover-collage` | `python3 skills/media/static-cover-collage/scripts/render_cover_collage.py --root "$STORY" --spec "$STORY/specs/cover.json"` |
-| Insert an approved cover frame-exactly | `shorts-assembly` | Follow `skills/media/shorts-assembly/references/platform-cover-timeline-insertion.md` and `skills/media/shorts-assembly/references/frame-exact-cover-timeline.md` |
-| Build an aspect-safe review timeline | `shorts-assembly` | Follow `skills/media/shorts-assembly/references/review-first-aspect-safe-assembly.md` and `skills/media/shorts-assembly/references/full-story-preview-assembly.md` |
-| Render a soundtrack revision | `story-soundtrack` | `skills/media/story-soundtrack/scripts/run.sh render_story_score.py --root "$STORY" --spec "$STORY/specs/soundtrack.json"` |
-| Mix source audio and score | `story-soundtrack` | `skills/media/story-soundtrack/scripts/run.sh mix_story_audio.py --root "$STORY" --spec "$STORY/specs/soundtrack.json"` |
-| Approve the chosen soundtrack revision | `story-soundtrack` | `skills/media/story-soundtrack/scripts/run.sh approve_story_soundtrack.py --root "$STORY" --spec "$STORY/specs/soundtrack.json" --approval-note "<user approval>"` |
-| Verify the locked soundtrack handoff | `story-soundtrack` | `skills/media/story-soundtrack/scripts/run.sh verify_story_soundtrack.py --root "$STORY" --spec "$STORY/specs/soundtrack.json" --require-approved-handoff` |
-| Deliver a review-only Telegram copy | `shorts-assembly` | `python3 skills/media/shorts-assembly/scripts/deliver_telegram_review_video.py --input <master.mp4> --derivative-output <preview.mp4> --chat-id <id>` |
-| Publish approved package | `social-publisher` | Use `publish_youtube.py`, `publish_instagram.py`, or `publish_telegram_story.py` only after their explicit approval gate |
-
-Common variants are documented as focused recipes rather than copied into project scripts:
-
-- title fitting and horizontal stills: `skills/media/shorts-assembly/references/title-preflight-and-horizontal-stills.md`;
-- stop-frame photo cards: `skills/media/shorts-assembly/references/stop-frame-photo-cards.md`;
-- animated inset cards: `skills/media/shorts-assembly/references/animated-inset-card-overlays.md`;
-- local cover replacement with locked audio: `skills/media/shorts-assembly/references/cover-swap-with-locked-audio.md`;
-- cover-inclusive timeline before scoring: `skills/media/shorts-assembly/references/cover-inclusive-timeline-and-score.md`;
-- Telegram review delivery diagnostics: `skills/media/shorts-assembly/references/telegram-bot-review-delivery.md`;
-- editorial reaction-tail trim: `skills/media/shorts-assembly/references/editorial-reaction-tail-trimming.md`.
+| What you want | What to upload | What to write in chat | Approval sequence |
+|---|---|---|---|
+| Short from existing video clips | Original clips | “Use upload order; keep original speech; propose cuts and titles; target `<platform/duration>`.” | Plan → titled scene previews → cover → audio → final master |
+| One photo as a narrative scene | One original photo | “Turn this into a `<duration>` scene; use a gentle `<pan/zoom>` focused on `<subject>`; title: `<text>`.” | Motion preview → title/safe-zone preview → scene |
+| Animated collage from 2–6 photos | Original photos, preferably labeled in order | “Make these photos one collage scene; emphasize `<hero photo>`; title: `<text>`; avoid cropping `<people/object>`.” | Layout still → animated MP4 → scene |
+| Photo cards over a video | Base video plus card photos | “Keep the base video moving; show these photos as cards at `<moments>`; do not cover `<subject/title area>`.” | Timing/layout preview → scene |
+| Several approved scenes as one beat | Approved scene previews | “Group scenes `<IDs>` in this order as one beat; preserve their audio and do not add new mixing.” | Group preview → grouped scene |
+| Add narration or voiceover | Target scene/group plus narration file, or approved text for TTS | “Add this voiceover to `<scene>`; `<preserve/lower/remove>` source audio; review the mix separately.” | Voiceover audio mix → revised scene |
+| Keep original sound and add uploaded music | Original clips plus music file | “Keep speech audible in scenes `<IDs>`; use this music underneath; lower or mute it at `<moments>`.” | Audio routing plan → mixed-audio preview → final mux |
+| Generate background music | Approved visual timeline | “Generate `<mood/tempo/instruments>` music for the frozen timeline; avoid vocals; preserve `<named source sounds>`.” | Music revision → source/music mix → approved audio handoff |
+| Clean noisy speech | Original clip | “Create a denoised derivative, preserve the original unchanged, keep natural pauses, and send the audio mix for approval before video.” | Original/cleaned audio comparison → derivative scene |
+| Platform cover | Candidate photos and final title/subtitle | “Create a cover for `<YouTube API/Instagram/Telegram>` using `<photo>`; title `<text>`; keep `<subject>` unobstructed.” | Platform-specific still → cover approval |
+| Replace only the cover | Approved final video plus newly approved cover | “Replace only the `<platform>` cover/first-frame segment; keep the approved timeline audio locked.” | Boundary preview → final master verification |
+| Review copy in Telegram | Approved master | “Send a Telegram review copy; keep the canonical master unchanged.” | Review delivery only; no publication approval |
+| Publish the finished package | Exact approved master, covers, and metadata | “Publish this exact package to `<platform/account>` for `<audience>` with `<title/caption/tags>`.” | Package summary → explicit publish approval → verified link/record |
 
 ### Why this order
 
