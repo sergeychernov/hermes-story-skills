@@ -1,7 +1,7 @@
 ---
 name: shorts-assembly
 description: Collect clips into titled 9:16 Shorts compilations.
-version: 1.5.5
+version: 1.5.6
 author: Hermes Agent
 license: MIT
 metadata:
@@ -211,7 +211,7 @@ printf "file 'clip01-titled.mp4'\nfile 'clip02-titled.mp4'\n" > concat.txt
 ffmpeg -y -f concat -safe 0 -i concat.txt -c copy final.mp4
 ```
 
-**Semantic delivery gate:** preserve the requested artifact, not merely its media format. A compatibility fallback may change container, codec, bitrate, resolution, or attachment type, but it must not replace a requested mixed story with an audio-only track or static-cover visualizer. Static-cover MP4 is valid only as a transport fallback for an explicitly audio-only approval preview. When the user asks for “music plus story sounds,” a full mixed story, or equivalent, audit narrated scene revisions and deliver the actual assembled timeline. Follow `references/full-story-music-mix-and-semantic-delivery.md`.
+**Semantic delivery gate:** preserve the requested artifact, not merely its transport format. A review derivative may change container, codec, bitrate, resolution, or attachment type, but it must not replace a requested mixed story with an audio-only track or static-cover visualizer. For a mixed story, consume the valid `story-soundtrack` handoff and deliver the assembled timeline; do not rebuild routing or stem gains in this skill.
 
 **Delivery gate:** never answer “video is ready” until the final named MP4 exists (not only a temporary file), `ffprobe` sees the expected video/audio streams, a full decode succeeds, and representative start/middle/end plus ordered scene frames are inspected. After an interrupted render, treat orphan `.tmp.mp4` files as unknown; inspect their `moov`/decode state before reuse and restart only when they are invalid. Attach the MP4 itself in the same response that announces completion. Keep QA commands fail-fast but avoid optional trailing utilities that can turn a successful artifact build into a misleading failed process; probe files with `ffprobe` or an equivalent required tool rather than appending a nonessential `file` call. When constructing shell loops over `name:value` pairs, iterate one variable and split it (`name=${item%%:*}` / `value=${item#*:}`); Bash does not support tuple syntax such as `for name,value`.
 
@@ -320,7 +320,7 @@ On low-power systems, do **not** use MPEG-TS or direct-MP4 stream-copy concat fo
 - `references/youtube-title-safe-policy.md` — canonical exact 28% bottom/right-controls geometry, media-fill separation, and MP4 verification checklist.
 - `references/shorts-ui-title-safe-calibration.md` — screenshot-driven calibration against the real Shorts player UI; current 72% box-bottom boundary and cross-renderer regression workflow.
 - `references/ffmpeg-titling-recipes.md` — canonical title helpers, UTF-8 textfile input, existing-video overlay contract, and shell safety.
-- `references/full-story-music-mix-and-semantic-delivery.md` — audit narrated revisions, build sample-exact source/music mixes, verify exact voice windows, and preserve requested artifact semantics across Telegram fallbacks.
+
 - `references/review-first-aspect-safe-assembly.md` — aspect-preserving video layouts,
   scene-local frame review before reassembly, mixed-audio concat, and delivery preflight.
 - `references/telegram-bot-review-delivery.md` — official `sendVideo` contract provenance,
