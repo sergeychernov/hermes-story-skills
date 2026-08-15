@@ -145,7 +145,7 @@ After explicit visual approval, deliver a versioned multi-format package derived
 
 Decode every derivative and verify exact dimensions. PNG and lossless WebP must decode to the same RGB pixels as the approved JPEG. Do not overwrite an earlier revision.
 
-`static-cover-collage` ownership ends at the approved hash-bound static artifact and its verified derivatives. When the approved cover must become a timed story scene, load `still-image-animation` to create a separate versioned H.264/yuv420p MP4, then delegate frame-exact insertion and upload-candidate timeline verification to `shorts-assembly`. For Shorts, the default cover-scene duration is exactly **1.0 second** (30 frames at 30 fps); use a longer cover only when the user explicitly requests it. MP4 approval and story activation remain downstream steps; an image conversion alone does not update the story manifest.
+`static-cover-collage` ownership ends at the approved hash-bound static artifact and its verified derivatives. `shorts-assembly` owns the target-specific cover-frame count, static-image-to-frame rendering, insertion and upload-candidate timeline verification. Load `still-image-animation` only when the user explicitly requests an animated cover as a separately reviewed derivative; it is not a prerequisite for a static first-frame or intro cover. Image approval alone does not update the story manifest or authorize video modification.
 
 ## Technical QA
 

@@ -6,6 +6,8 @@ Use this when inserting an approved static-cover-collage artifact into a vertica
 
 `static-cover-collage` owns source selection, composition, typography/crop QA, platform dimensions, report hashes and per-platform image approval. This reference starts only after that skill has produced an approved hash-bound artifact.
 
+`shorts-assembly` owns the exact cover-frame count, rendering the approved static pixels into those frames, insertion, packet/frame timeline validation and final mux. `still-image-animation` is optional only for a separately requested animated cover; never inherit its default duration or fade settings for a static cover.
+
 1. Verify the exact approved image hash and target platform from the cover report.
 2. Wait for a separate explicit insertion command such as «вставь в видео»; image approval alone does not authorize changing the video.
 3. Create a new upload-candidate MP4 without modifying the approved image pixels or the previous master.

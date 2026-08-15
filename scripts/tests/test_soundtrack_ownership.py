@@ -67,6 +67,7 @@ class SoundtrackOwnershipTests(unittest.TestCase):
 
         insertion_text = insertion.read_text(encoding="utf-8")
         self.assertIn("approved static-cover-collage artifact", insertion_text)
+        self.assertIn("`shorts-assembly` owns the exact cover-frame count", insertion_text)
         self.assertNotIn("Build the cover as a standalone", insertion_text)
         self.assertNotIn("compose/render one new soundtrack", insertion_text)
 
@@ -77,6 +78,8 @@ class SoundtrackOwnershipTests(unittest.TestCase):
         static_skill = (ROOT / "skills/media/static-cover-collage/SKILL.md").read_text(encoding="utf-8")
         self.assertIn("version: 1.3.1", static_skill)
         self.assertIn("`static-cover-collage` ownership ends", static_skill)
+        self.assertNotIn("default cover-scene duration", static_skill)
+        self.assertNotIn("load `still-image-animation` and create", static_skill)
 
 
 if __name__ == "__main__":
