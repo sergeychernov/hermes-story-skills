@@ -24,7 +24,7 @@ references/<topic>.md     contract, commands, pitfalls
 scripts/tests/test_*.py   behavioral and regression tests
 ```
 
-The project should retain only versioned specs and, when compatibility matters, a tiny entrypoint that invokes the skill script. Do not leave a second copy of the implementation in the project.
+The project should retain only versioned specs. Do not leave a second implementation or forwarding wrapper in the project.
 
 ## TDD migration
 
@@ -32,11 +32,8 @@ The project should retain only versioned specs and, when compatibility matters, 
 2. Implement the smallest script that passes.
 3. Add fail-closed tests for unknown spec keys, path traversal, aliased outputs, accidental overwrite, wrong media format, duration drift, and decode failure where relevant.
 4. Run the complete skill suite, not only the new test.
-5. Create a new project revision with the skill script. Never overwrite the prior project artifact merely to prove migration.
-6. Compare old and new outputs:
-   - deterministic PCM/image/layout data: require byte-identical SHA-256 when the algorithm is unchanged;
-   - lossy/container output: compare decoded duration, streams, measured quality, and content, while recording the new hash.
-7. Switch the project manifest only after equivalence checks pass.
+5. Delete the project-local implementation after the skill suite passes.
+6. If an active project exists, point its next revision at the skill script and verify that output normally; do not keep a shim for inactive projects.
 
 ## Provenance contract
 
@@ -58,7 +55,7 @@ Promotion is complete only when:
 
 - the skill owns the implementation, template, reference, and tests;
 - project-specific paths and choices exist only in project specs;
-- the old project implementation is removed or reduced to a compatibility entrypoint;
-- migrated outputs are verified against the previous revision;
+- the project-local implementation is removed;
+- any active project revision using the promoted skill has passed normal output verification;
 - the project manifest points to the new versioned artifacts;
 - any announced approval media is attached as the actual playable/viewable file.

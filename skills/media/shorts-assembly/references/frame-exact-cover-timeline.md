@@ -10,7 +10,7 @@ MP4 `format.duration` can include AAC encoder padding. For a CFR visual story, t
 video_frame_count / target_fps
 ```
 
-Do not derive scene boundaries or score routing from legacy container durations.
+Do not derive scene boundaries or score routing from container durations.
 
 ## Build contract
 

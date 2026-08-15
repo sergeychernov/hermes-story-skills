@@ -10,7 +10,7 @@ Use this when a user screenshot shows burned-in titles colliding with current Yo
 4. Update `scripts/youtube_safe_title.py` first, then RED→GREEN tests for its FFmpeg expression and 1080×1920 safe rectangle.
 5. Run consumer suites for still-image animation and animated collage; project renderers must import the helper rather than duplicate percentages.
 6. Render a representative real scene, fully decode it, and inspect a late-hold frame. When possible, compare that frame against the supplied UI screenshot.
-7. Update documentation and search for stale hard-coded expressions in legacy project scripts.
+7. Update documentation and delete stale hard-coded expressions from project scripts.
 
 ## Current calibrated policy
 

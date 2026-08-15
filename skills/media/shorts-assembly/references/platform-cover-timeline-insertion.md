@@ -45,21 +45,8 @@ ffmpeg -y -f concat -safe 0 -i concat.txt -map 0:v:0 -c copy -an video-with-cove
 
 Then mux the audio separately with `-c copy` and **without `-shortest`** (see pitfalls).
 
-Legacy copy path — MPEG-TS concat:
-
-```bash
-ffmpeg -y -i cover-intro.mp4 \
-  -c copy -bsf:v h264_mp4toannexb -f mpegts cover-intro.ts
-ffmpeg -y -i approved-master.mp4 \
-  -c copy -bsf:v h264_mp4toannexb -f mpegts approved-master.ts
-ffmpeg -y -fflags +genpts \
-  -i 'concat:cover-intro.ts|approved-master.ts' \
-  -c copy -bsf:a aac_adtstoasc -movflags +faststart upload-candidate.mp4
-```
-
 Pitfalls observed with copy concat:
 
-- The MPEG-TS path can **silently drop one master frame** when the master has a non-zero video `start_time` (e.g. 0.021 s): the output decodes cleanly but `nb_read_frames` equals master frames instead of master+inserted. Only the frame-count identity check catches this.
 - A concat-demuxer copy can appear to succeed yet produce an absurd nominal frame rate (e.g. 240 fps) and non-monotonic DTS warnings when timebases, actual cadence, or start offsets mismatch. A matching `r_frame_rate` alone is insufficient: a master with `avg_frame_rate≈29.89`, `start_time=0.021`, and an intro at exact `30/1` is incompatible. **Never patch this with timestamp-remux flags and retry.** Reject it and run the one-pass CFR normalization path.
 - Do not trust decode success as timeline proof: `ffmpeg -f null` can decode a file that has invalid/non-monotonic packet timestamps. Inspect packet DTS monotonicity explicitly.
 - Muxing with `-shortest` while the audio track runs longer than video drops the last video frame(s). Mux without it and rely on the frame-count check instead.

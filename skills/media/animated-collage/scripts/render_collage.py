@@ -250,7 +250,7 @@ def validate_layout_geometry(cells: list[tuple[int, int, int, int]], width: int,
 
 
 def default_base_layout(count: int, sources: list[dict[str, Any]], title: str) -> str:
-    """Pick a heterogeneous legacy tiled layout for overlap_stack."""
+    """Pick a heterogeneous tiled base layout for overlap_stack."""
     if count == 3:
         return "2+1"
     if count == 4:

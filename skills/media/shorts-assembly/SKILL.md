@@ -1,7 +1,7 @@
 ---
 name: shorts-assembly
 description: Collect clips into titled 9:16 Shorts compilations.
-version: 1.5.2
+version: 1.5.3
 author: Hermes Agent
 license: MIT
 metadata:
@@ -335,7 +335,7 @@ On low-power systems, do **not** use MPEG-TS or direct-MP4 stream-copy concat fo
   agent that skips Step 0 will hand-roll ffmpeg with wrong title style, waste
   FLUX 3 credits on child photos, and skip animation. Always load
   `shorts-assembly` and `still-image-animation` before any rendering.
-- **Old title style (`borderw=3` or `black@0.58`):** Deprecated. The canonical machine-readable style is `sergey-vertical-title-v2` from `scripts/brand_title_style.py`: `box=1:boxcolor=black@0.406:boxborderw=24`, DejaVu Sans Bold, fontsize 54, line_spacing 12 at 1080 px. Never copy these values into project renderers; import the helper so later brand revisions propagate.
+- **Title style drift:** The canonical machine-readable style is `sergey-vertical-title-v2` from `scripts/brand_title_style.py`. Never copy its values into project renderers; import the helper so later brand revisions propagate.
 - **Exact-vs-minimum safe margin:** Align the complete title-box bottom exactly to `h*0.72`; do not merely enforce `>=15%` while also centering around another anchor. The latter silently lifts titles and wastes composition space. Verify the actual box edge numerically.
 - **Duplicated title-safe constants:** Do not embed percentages independently in still, video, and collage renderers. Import or invoke `scripts/youtube_safe_title.py`. For Sergey's YouTube workflow the lower 28% must remain entirely free of the complete title box, and the right controls zone must also remain clear.
 - **JPEGs presented as video previews:** Start/middle/end JPEGs are QA artifacts, not user-requested preview clips. When reviewing a corrected scene, attach the actual MP4; include stills only as supplementary evidence.
@@ -389,9 +389,7 @@ On low-power systems, do **not** use MPEG-TS or direct-MP4 stream-copy concat fo
 - `references/frame-exact-cover-timeline.md` — frame-authoritative assembly, AAC-padding trimming, exact cover-frame QA, and soundtrack handoff.
 - `references/platform-cover-timeline-insertion.md` — consume an approved platform cover, insert it frame-exactly, and verify the upload-candidate timeline.
 - `references/title-fit-editorial-and-rebuild-gates.md` — title-box fit, adjacent-title continuity, incidental-subject overlap policy, and proof that a corrected scene reached the rebuilt final film.
-- `references/youtube-title-safe-exact-15.md` — authoritative exact 28% rule, box-edge math, exception policy, media-fill separation, and verification gate.
-- `references/youtube-title-safe-exact-20.md` — historical filename retained for compatibility; current rule is exact 28%.
-- `references/youtube-title-safe-policy.md` — centralized 28% bottom/right-controls policy, regression history, and MP4-preview verification checklist.
+- `references/youtube-title-safe-policy.md` — canonical exact 28% bottom/right-controls geometry, media-fill separation, and MP4 verification checklist.
 - `references/shorts-ui-title-safe-calibration.md` — screenshot-driven calibration against the real Shorts player UI; current 72% box-bottom boundary and cross-renderer regression workflow.
 - `references/ffmpeg-titling-recipes.md` — concrete drawtext textfile commands,
   title positioning table, still-to-video recipe, FLUX 3 child photo rejection

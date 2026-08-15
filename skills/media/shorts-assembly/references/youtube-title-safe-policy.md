@@ -1,24 +1,30 @@
-# YouTube title-safe policy: correction record
+# YouTube title-safe policy
 
-## Durable lesson
+For Sergey's vertical 9:16 exports, the complete title box, including `boxborderw`, must end exactly at the 72%-of-height boundary. The lower 28% must contain no title pixels. Reserve the configured right-side controls zone as well.
 
-A title-safe percentage is a policy, not a per-renderer tuning knob. For Sergey's vertical YouTube workflow:
+Use `scripts/youtube_safe_title.py` as the only geometry source for still, video, and collage renderers. Do not duplicate percentages or formulas in project scripts.
 
-- the complete title box, including `boxborderw`, must stay out of the lower 28%;
-- reserve the right-side controls zone as well;
-- use `scripts/youtube_safe_title.py` as the only geometry source for still, video, and collage renderers;
-- `middle` is allowed when it avoids faces or story anchors; `bottom` is not a YouTube-safe option;
-- start/middle/end JPEGs are internal QA, not a substitute for the corrected MP4 preview requested by the user.
+## Geometry
 
-## Regression pattern to avoid
+For FFmpeg `drawtext`, where `y` addresses the text origin:
 
-The failed workflow had separate hard-coded formulas in several renderers. A real Shorts screenshot showed that the former 15% clearance left titles under the metadata and promotion controls. Visual inspection without the actual client UI did not prevent policy drift. Centralize constants, test the 1080x1920 and 720x1280 rectangles, then render and fully decode the real MP4 preview.
+```text
+y = h*0.72 - text_h - boxborderw
+```
 
-## Verification checklist
+This pins the complete box bottom to `h*0.72`. Do not combine it with a second aesthetic anchor that silently lifts the title.
+
+`middle` is allowed only when explicitly approved or when the lower position would obscure a primary story subject that cannot be protected by crop or layout. `bottom` is not a YouTube-safe option.
+
+## Media fill
+
+Title geometry does not authorize a black footer or empty caption band. Preserve aspect ratio and use content-aware `cover` for edge-to-edge media unless the user explicitly approves `contain`. Never stretch.
+
+## Verification
 
 1. Generate geometry with `youtube_safe_title.py`.
-2. Confirm `bottom_free == 0.28` and the title box bottom is exactly `0.72 * height` within rounding tolerance.
-3. Confirm the title box right edge remains left of the reserved controls strip.
-4. Inspect start/middle/end frames for faces, clipping, and composition.
-5. Fully decode the MP4.
-6. Deliver the MP4 itself; still frames may only supplement it.
+2. Confirm `bottom_free == 0.28`.
+3. Confirm `title_y + text_h + boxborderw == 0.72 * frame_height` within rounding tolerance.
+4. Confirm the complete title box remains left of the configured controls strip.
+5. Inspect start, middle, and end frames for crop, faces, clipping, black gaps, and title position.
+6. Fully decode and deliver the actual MP4 preview; JPEGs are internal QA only.

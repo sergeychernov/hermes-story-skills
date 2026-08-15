@@ -1,7 +1,7 @@
 ---
 name: static-cover-collage
 description: Use for natural or collage platform-specific covers.
-version: 1.3.1
+version: 1.3.2
 author: Sergey Chernov / Hermes Agent
 license: MIT
 metadata:
@@ -77,7 +77,7 @@ Use a platform preset whenever the destination is known:
 - `instagram_reels_cover`: exact 420×654 Reel cover with conservative central crop-safe rectangle;
 - `telegram_story_cover`: 1080×1920 first-frame cover with conservative Telegram UI-safe rectangle.
 
-The legacy generic presets remain only for non-platform drafts:
+Generic presets are available only for non-platform drafts:
 
 - `vertical_crop_safe_center`: hero in the upper 38%, central text panel from 38–62%, and two supporting cells below.
 - `vertical_story_asymmetric`: hero 52%, support 22%, bottom text panel 26%.

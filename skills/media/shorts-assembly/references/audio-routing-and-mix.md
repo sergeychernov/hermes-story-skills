@@ -37,12 +37,11 @@ Use explicit smooth gain ramps at routing boundaries; around 300 ms is a proven 
 
 Do not equate “quiet” with nearly inaudible. For Sergey's acoustic travel mixes:
 
-- historical starting point: complete rhythm section at **`0.38`** (about **`-8.4 dB`**) under unity original speech, melody off;
-- **approved Beijing/current default after listening:** **`0.456`** (about **`-6.82 dB`**) under unity original speech, melody off.
+- current default for a complete rhythm section: **`0.456`** (about **`-6.82 dB`**) under unity original speech, melody off.
 
-The `0.456` setting preserves a clearly audible continuous bass/guitar/drums pulse on phone speakers while leaving dialogue intelligible. A generic attenuation such as `-22 dB` can make bass, guitar, and brushes disappear even though RMS is technically nonzero. Start future comparable acoustic travel mixes at `0.456`; return to `0.38` only when the specific recording needs more speech headroom.
+The `0.456` setting preserves a clearly audible continuous bass/guitar/drums pulse on phone speakers while leaving dialogue intelligible. A generic attenuation such as `-22 dB` can make bass, guitar, and brushes disappear even though RMS is technically nonzero. Start comparable acoustic travel mixes at `0.456` and tune from the actual recording when speech needs more headroom.
 
-When the user requests a relative adjustment such as «добавь ещё 20%», apply it to **linear amplitude**, not percentage points and not decibels: `0.38 × 1.20 = 0.456`, which is about `-6.82 dB` (`+1.58 dB`). Render to a new review filename, verify representative voice-scene rhythm RMS increased by the requested ratio, and remeasure final loudness/true peak. Preserve all unrelated routing levels.
+When the user requests a relative adjustment such as «добавь ещё 20%», apply it to **linear amplitude**, not percentage points and not decibels. Render to a new review filename, verify representative voice-scene rhythm RMS increased by the requested ratio, and remeasure final loudness/true peak. Preserve all unrelated routing levels.
 
 ## 3. Speech and source-music treatment
 

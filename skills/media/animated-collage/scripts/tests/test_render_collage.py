@@ -126,13 +126,13 @@ class LayoutTests(unittest.TestCase):
 
 
 class OverlapStackTests(unittest.TestCase):
-    SCENE_002_BASE_CELLS = [
+    FOUR_PANEL_HERO_BASE_CELLS = [
         [0, 0, 1080, 720],
         [0, 720, 540, 650],
         [540, 720, 540, 650],
         [0, 1370, 1080, 550],
     ]
-    SCENE_005_BASE_CELLS = [
+    ASYMMETRIC_FIVE_PANEL_BASE_CELLS = [
         [0, 0, 720, 500],
         [720, 0, 360, 500],
         [0, 500, 1080, 880],
@@ -184,8 +184,8 @@ class OverlapStackTests(unittest.TestCase):
         self.assertEqual(bottom_expanded, (0, bottom_base[1] - extend, 1080, bottom_base[3] + extend))
         self._assert_no_full_canvas_expansion(cells, base_cells)
 
-    def test_scene_002_custom_base_cells(self):
-        base_cells = mod.parse_base_cells(self.SCENE_002_BASE_CELLS, 1080, 1920)
+    def test_custom_base_cells_four_panel_hero_layout(self):
+        base_cells = mod.parse_base_cells(self.FOUR_PANEL_HERO_BASE_CELLS, 1080, 1920)
         base_rows = mod._rows_from_base_cells(base_cells)
         directions = mod.overlap_entrance_directions(base_rows)
         cells = mod.overlap_stack_cells(base_cells, base_rows, directions, 1080, 1920, 0.40)
@@ -211,8 +211,8 @@ class OverlapStackTests(unittest.TestCase):
         self.assertGreater(mod._overlap_fraction(cells[3], cells[2]), 0.0)
         self.assertIn("cross_row_overlap_ratio", meta)
 
-    def test_scene_005_metro_custom_base_cells(self):
-        base_cells = mod.parse_base_cells(self.SCENE_005_BASE_CELLS, 1080, 1920)
+    def test_custom_base_cells_asymmetric_five_panel_layout(self):
+        base_cells = mod.parse_base_cells(self.ASYMMETRIC_FIVE_PANEL_BASE_CELLS, 1080, 1920)
         base_rows = mod._rows_from_base_cells(base_cells)
         directions = mod.overlap_entrance_directions(base_rows)
         cells = mod.overlap_stack_cells(base_cells, base_rows, directions, 1080, 1920, 0.40)
@@ -243,9 +243,9 @@ class OverlapStackTests(unittest.TestCase):
 
     def test_base_cells_normalized_and_pixel_equivalent(self):
         normalized = mod.serialize_base_cells(
-            [tuple(cell) for cell in self.SCENE_002_BASE_CELLS], 1080, 1920
+            [tuple(cell) for cell in self.FOUR_PANEL_HERO_BASE_CELLS], 1080, 1920
         )
-        pixel_cells = mod.parse_base_cells(self.SCENE_002_BASE_CELLS, 1080, 1920)
+        pixel_cells = mod.parse_base_cells(self.FOUR_PANEL_HERO_BASE_CELLS, 1080, 1920)
         norm_cells = mod.parse_base_cells(normalized, 1080, 1920)
         self.assertEqual(pixel_cells, norm_cells)
 
@@ -260,7 +260,7 @@ class OverlapStackTests(unittest.TestCase):
             "sources": self.sources(5),
             "output": "exports/out.mp4",
             "layout": "overlap_stack",
-            "base_cells": self.SCENE_002_BASE_CELLS,
+            "base_cells": self.FOUR_PANEL_HERO_BASE_CELLS,
         }
         with self.assertRaisesRegex(ValueError, "must match source count"):
             mod.validate_spec(spec)
@@ -272,18 +272,18 @@ class OverlapStackTests(unittest.TestCase):
             "output": "exports/out.mp4",
             "layout": "overlap_stack",
             "base_layout": "2+2+1",
-            "base_cells": self.SCENE_002_BASE_CELLS,
+            "base_cells": self.FOUR_PANEL_HERO_BASE_CELLS,
         }
         with self.assertRaisesRegex(ValueError, "cannot be combined"):
             mod.validate_spec(spec)
 
-    def test_validate_spec_accepts_scene_002_base_cells(self):
+    def test_validate_spec_accepts_normalized_custom_base_cells(self):
         spec = {
             "schema_version": 1,
             "sources": self.sources(4),
             "output": "exports/out.mp4",
             "layout": "overlap_stack",
-            "base_cells": self.SCENE_002_BASE_CELLS,
+            "base_cells": self.FOUR_PANEL_HERO_BASE_CELLS,
         }
         normalized = mod.validate_spec(spec)
         self.assertEqual(normalized["base_layout"], "custom")
@@ -375,7 +375,7 @@ class OverlapStackTests(unittest.TestCase):
         normalized = mod.validate_spec(spec)
         self.assertEqual(normalized["entry_seconds"], 2.5)
 
-    def test_legacy_auto_layout_keeps_two_second_entry(self):
+    def test_auto_tiled_layout_keeps_two_second_entry(self):
         spec = {
             "schema_version": 1,
             "sources": self.sources(5),
@@ -501,11 +501,11 @@ class OverlapStackTests(unittest.TestCase):
             [p["start_angle_deg"] for p in second],
         )
 
-    def test_assign_panel_rotations_zero_final_preserves_legacy_start_angles(self):
-        legacy = mod.assign_panel_rotations(5, 99, 25.0, 45.0)
+    def test_assign_panel_rotations_zero_final_preserves_start_angles(self):
+        baseline = mod.assign_panel_rotations(5, 99, 25.0, 45.0)
         explicit = mod.assign_panel_rotations(5, 99, 25.0, 45.0, 0.0)
         self.assertEqual(
-            [p["start_angle_deg"] for p in legacy],
+            [p["start_angle_deg"] for p in baseline],
             [p["start_angle_deg"] for p in explicit],
         )
         for panel in explicit:

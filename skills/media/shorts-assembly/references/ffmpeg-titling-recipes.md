@@ -19,12 +19,7 @@ position=lower_fifth; complete box bottom=h*0.72
 
 Scale numeric values proportionally for other widths via the helper. If the exact font file is unavailable, fail explicitly rather than silently changing the brand.
 
-This produces a semi-transparent dark background box behind the text, which is
-far more readable over complex backgrounds (grass, patterns, moving video) than
-the old `borderw=3` outline style.
-
-**Do NOT use `borderw=3:bordercolor=black`** — it is the deprecated old style.
-Always use the box style above.
+The semi-transparent dark box preserves readability over complex backgrounds such as grass, patterns, and moving video. Always obtain this style from `scripts/brand_title_style.py`; do not hard-code a separate project style.
 
 ## drawtext textfile workaround
 
