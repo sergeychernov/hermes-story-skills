@@ -1,7 +1,7 @@
 ---
 name: shorts-assembly
 description: Collect clips into titled 9:16 Shorts compilations.
-version: 1.5.3
+version: 1.5.4
 author: Hermes Agent
 license: MIT
 metadata:
@@ -325,8 +325,7 @@ On low-power systems, do **not** use MPEG-TS or direct-MP4 stream-copy concat fo
 
 - Check dimensions: all clips must be 720×1280 (9:16)
 - Check duration against the requested deliverable: `≤60s` for an actual Shorts cut; preserve full duration for an explicitly requested full story
-- Extract a preview frame from each clip to visually confirm titles are
-  readable AND positioned correctly (lower fifth, ~66–71% of height for 720p)
+- Extract a preview frame from each clip to confirm titles are readable, the complete title-box bottom is exactly at `h*0.72`, and the right controls strip remains clear.
 - Send assembled file to user for approval
 
 ## Pitfalls
@@ -391,15 +390,7 @@ On low-power systems, do **not** use MPEG-TS or direct-MP4 stream-copy concat fo
 - `references/title-fit-editorial-and-rebuild-gates.md` — title-box fit, adjacent-title continuity, incidental-subject overlap policy, and proof that a corrected scene reached the rebuilt final film.
 - `references/youtube-title-safe-policy.md` — canonical exact 28% bottom/right-controls geometry, media-fill separation, and MP4 verification checklist.
 - `references/shorts-ui-title-safe-calibration.md` — screenshot-driven calibration against the real Shorts player UI; current 72% box-bottom boundary and cross-renderer regression workflow.
-- `references/ffmpeg-titling-recipes.md` — concrete drawtext textfile commands,
-  title positioning table, still-to-video recipe, FLUX 3 child photo rejection
-  details.
-- `references/motion-pan-vs-zoom.md` — pan-vs-zoom choice guide, pan direction
-  cheat sheet, JSON spec example for movement scenes, skills repo source path.
-- `references/animated-collage-renderer-contract.md` — scripted collage inputs,
-  lower-fifth title invariant, FFmpeg escaping, report fields, and three-frame QA.
-- `references/dense-animated-collage-layouts.md` — dense four-/five-photo layouts,
-  title-over-panel rules, reusable scripted rendering, and occupancy-focused QA.
+- `references/ffmpeg-titling-recipes.md` — canonical title helpers, UTF-8 textfile input, existing-video overlay contract, and shell safety.
 - `references/full-story-music-mix-and-semantic-delivery.md` — audit narrated revisions, build sample-exact source/music mixes, verify exact voice windows, and preserve requested artifact semantics across Telegram fallbacks.
 - `references/review-first-aspect-safe-assembly.md` — aspect-preserving video layouts,
   scene-local frame review before reassembly, mixed-audio concat, and delivery preflight.

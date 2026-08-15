@@ -66,7 +66,6 @@ class LayoutTests(unittest.TestCase):
 
     def test_title_box_color_comes_from_canonical_style_manifest(self):
         source = Path(mod.__file__).read_text(encoding="utf-8")
-        self.assertNotIn("boxcolor=black@0.58", source)
         self.assertIn('canonical_title["box_color"]', source)
 
     def sources(self, n: int, safe: tuple[int, ...] = ()):

@@ -1,7 +1,7 @@
 ---
 name: static-cover-collage
 description: Use for natural or collage platform-specific covers.
-version: 1.3.2
+version: 1.3.3
 author: Sergey Chernov / Hermes Agent
 license: MIT
 metadata:
@@ -84,7 +84,7 @@ Generic presets are available only for non-platform drafts:
 
 Images use aspect-preserving cover crops and fill every image cell edge-to-edge. No stretching, blurred filler, or blank regions.
 
-Typography follows the established travel-cover language:
+Typography follows the current cover contract:
 
 - accent headline: yellow with black stroke;
 - primary title: white with black stroke;

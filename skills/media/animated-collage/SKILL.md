@@ -1,7 +1,7 @@
 ---
 name: animated-collage
 description: Use when rendering 2-6 photos as an animated collage.
-version: 1.5.2
+version: 1.5.3
 author: Sergey Chernov / Hermes Agent
 license: MIT
 metadata:
@@ -197,6 +197,6 @@ Record output path, hash, source order, selected layout and animation, QA frame 
 - [ ] rotated overlap_stack panels stay fully hidden until `entrance.start` (no rotated-canvas bleed before schedule)
 - [ ] no audio, blurred filler, empty cells, or distorted panels
 - [ ] faces, food, architecture, and key action survive crops
-- [ ] title is white over `black@0.58` in the lower fifth
+- [ ] title uses the canonical style and safe geometry reported by the shared title helpers
 - [ ] mid-entry, arrived, final, and contact frames inspected
 - [ ] MP4 and last frame delivered; story manifest updated separately
