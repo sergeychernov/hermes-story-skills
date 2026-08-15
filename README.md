@@ -37,7 +37,7 @@ If this is your first external skill directory, configure it with:
 
 ```bash
 SKILLS_DIR="$(cd "$HERMES_HOME/external/hermes-story-skills/skills/media" && pwd)"
-hermes config set skills.external_dirs "[\"$SKILLS_DIR\"]"
+hermes config set skills.external_dirs "$SKILLS_DIR"
 ```
 
 If `skills.external_dirs` already contains other directories, do not run the command above because it would replace the list. Use the recommended chat request and ask Hermes to append this directory without removing existing entries. Then start a new session.
