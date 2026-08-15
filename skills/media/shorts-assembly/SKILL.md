@@ -84,7 +84,7 @@ After every audio-bearing render, compare source and export stream start/end and
 
 
 
-**Project-script promotion gate:** before creating a repeated project-local media renderer, check whether its behavior belongs in this skill. Promote reusable implementation into `scripts/`, move story-specific choices into a versioned JSON spec, add tests/templates/reference documentation, and verify the migrated artifact against the previous revision before switching the manifest. Follow `references/promoting-project-media-scripts.md`; do not leave duplicate implementations in both the skill and project.
+**Project-script promotion gate:** before creating a repeated project-local media renderer, check whether its behavior belongs in this skill. Put reusable implementation in `scripts/`, keep story-specific choices in a versioned JSON spec, add tests/templates/reference documentation, switch the project invocation, and delete the project-local implementation. Follow `references/promoting-project-media-scripts.md`; do not leave duplicate implementations.
 
 ### 3. Title overlay: two paths
 
@@ -268,10 +268,7 @@ On low-power systems, do **not** use MPEG-TS or direct-MP4 stream-copy concat fo
 
 ## Pitfalls
 
-- **Starting without loading skills:** The single most common failure mode. An
-  agent that skips Step 0 will hand-roll ffmpeg with wrong title style, waste
-  FLUX 3 credits on child photos, and skip animation. Always load
-  `shorts-assembly` and `still-image-animation` before any rendering.
+- **Owner routing:** Load the owner listed in Step 0 before rendering or assembly; do not reproduce another skill's behavior locally.
 - **Title style drift:** The canonical machine-readable style is `sergey-vertical-title-v2` from `scripts/brand_title_style.py`. Never copy its values into project renderers; import the helper so later brand revisions propagate.
 - **Title position drift:** Align the complete title-box bottom exactly to `h*0.72`; do not combine that boundary with a second aesthetic anchor. Verify the actual box edge numerically.
 - **Duplicated title-safe constants:** Do not embed percentages independently in still, video, and collage renderers. Import or invoke `scripts/youtube_safe_title.py`. For Sergey's YouTube workflow the lower 28% must remain entirely free of the complete title box, and the right controls zone must also remain clear.

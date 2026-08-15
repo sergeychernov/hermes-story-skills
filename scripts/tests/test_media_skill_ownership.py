@@ -47,7 +47,10 @@ class MediaSkillOwnershipTests(unittest.TestCase):
         self.assertIn("animated cover derivative", story_skill)
 
         shorts_skill = (SHORTS / "SKILL.md").read_text(encoding="utf-8")
-        self.assertIn("Approved static cover insertion is the exception", shorts_skill)
+        self.assertIn(
+            "For an approved static cover, assembly renders the approved pixels",
+            shorts_skill,
+        )
 
 
 if __name__ == "__main__":
