@@ -12,6 +12,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -19,6 +20,8 @@ from typing import Any
 SEND_VIDEO_MAX_BYTES = 50_000_000
 OFFICIAL_CONTRACT_URL = "https://core.telegram.org/bots/api#sendvideo"
 DEFAULT_GATEWAY_LOG = Path("/opt/data/logs/gateway.log")
+GATEWAY_LOG_TAIL_BYTES = 1024 * 1024
+TELEGRAM_ENV_ALLOWLIST = ("TELEGRAM_BOT_TOKEN", "TELEGRAM_PROXY")
 
 
 def run(cmd: list[str], *, capture: bool = False) -> subprocess.CompletedProcess[str]:
@@ -69,11 +72,20 @@ def classify_latest_failure(log_path: Path, artifact: Path) -> dict[str, Any]:
     result: dict[str, Any] = {"classification": None, "error": None, "log": str(log_path)}
     if not log_path.is_file():
         return result
-    lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
+    with log_path.open("rb") as handle:
+        size = log_path.stat().st_size
+        offset = max(0, size - GATEWAY_LOG_TAIL_BYTES)
+        handle.seek(offset)
+        raw = handle.read(GATEWAY_LOG_TAIL_BYTES)
+    if offset:
+        _, separator, raw = raw.partition(b"\n")
+        if not separator:
+            raw = b""
+    lines = raw.decode("utf-8", errors="replace").splitlines()
     artifact_text = str(artifact)
     matches: list[str] = []
     for index, line in enumerate(lines):
-        if "send_video fallback" not in line or artifact_text not in line:
+        if "send_video fallback" not in line or not line.rstrip().endswith(f" for {artifact_text}"):
             continue
         for previous in reversed(lines[max(0, index - 8):index]):
             if "Failed to send video:" in previous:
@@ -154,7 +166,29 @@ def preflight(path: Path) -> dict[str, Any]:
     }
 
 
+def parse_gateway_environment(raw: bytes) -> dict[str, str]:
+    allowed = {key.encode(): key for key in TELEGRAM_ENV_ALLOWLIST}
+    result: dict[str, str] = {}
+    for item in raw.split(b"\0"):
+        if b"=" not in item:
+            continue
+        key, value = item.split(b"=", 1)
+        if key in allowed:
+            result[allowed[key]] = value.decode("utf-8", errors="replace")
+    return result
+
+
+def _is_gateway_process(pid: int) -> bool:
+    try:
+        cmdline = Path(f"/proc/{pid}/cmdline").read_bytes().replace(b"\0", b" ")
+    except (FileNotFoundError, PermissionError, ProcessLookupError):
+        return False
+    return b"hermes gateway run" in cmdline
+
+
 def find_gateway_environment(explicit_pid: int | None) -> dict[str, str]:
+    if explicit_pid is not None and not _is_gateway_process(explicit_pid):
+        raise RuntimeError("--gateway-pid does not belong to a live Hermes gateway")
     pids: list[int] = [explicit_pid] if explicit_pid else []
     if not pids:
         for entry in Path("/proc").iterdir():
@@ -171,13 +205,10 @@ def find_gateway_environment(explicit_pid: int | None) -> dict[str, str]:
             raw = Path(f"/proc/{pid}/environ").read_bytes().split(b"\0")
         except (FileNotFoundError, PermissionError, ProcessLookupError):
             continue
-        env = {
-            item.split(b"=", 1)[0].decode(): item.split(b"=", 1)[1].decode()
-            for item in raw if b"=" in item
-        }
+        env = parse_gateway_environment(b"\0".join(raw))
         if env.get("TELEGRAM_BOT_TOKEN"):
             return env
-    env = dict(os.environ)
+    env = {key: os.environ[key] for key in TELEGRAM_ENV_ALLOWLIST if key in os.environ}
     if env.get("TELEGRAM_BOT_TOKEN"):
         return env
     raise RuntimeError("TELEGRAM_BOT_TOKEN unavailable in environment or live gateway process")
@@ -185,12 +216,52 @@ def find_gateway_environment(explicit_pid: int | None) -> dict[str, str]:
 
 def write_report(path: Path, report: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = Path(str(path) + ".tmp")
-    tmp.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    os.replace(tmp, path)
+    fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    tmp = Path(tmp_name)
+    try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump(report, handle, ensure_ascii=False, indent=2)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp, path)
+        dir_flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+        dir_fd = os.open(path.parent, dir_flags)
+        try:
+            os.fsync(dir_fd)
+        finally:
+            os.close(dir_fd)
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
+def _matching_derivative_report(
+    source: Path, output: Path, max_mib: float, width: int, height: int
+) -> bool:
+    report_path = Path(str(output) + ".report.json")
+    if not output.is_file() or not report_path.is_file():
+        return False
+    try:
+        report = json.loads(report_path.read_text(encoding="utf-8"))
+        return (
+            report.get("status") == "ok"
+            and report["source"]["sha256"] == sha256(source)
+            and report["output"]["sha256"] == sha256(output)
+            and float(report["output"]["max_mib_policy"]) == float(max_mib)
+            and int(report["video"]["width"]) == width
+            and int(report["video"]["height"]) == height
+        )
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError, OSError):
+        return False
 
 
 def create_derivative(source: Path, output: Path, max_mib: float, width: int, height: int) -> Path:
+    report_path = Path(str(output) + ".report.json")
+    if output.exists() or report_path.exists():
+        if _matching_derivative_report(source, output, max_mib, width, height):
+            return output
+        raise RuntimeError("existing derivative or report does not match requested source and policy")
     maker = Path(__file__).with_name("make_review_delivery_copy.py")
     run(
         [

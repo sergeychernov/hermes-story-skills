@@ -14,10 +14,21 @@ import tempfile
 from pathlib import Path
 
 SHORTS_SCRIPTS = Path(__file__).resolve().parents[2] / "shorts-assembly" / "scripts"
+for _module_file in ("youtube_safe_title.py", "brand_title_style.py"):
+    if not (SHORTS_SCRIPTS / _module_file).is_file():
+        raise ImportError(f"missing sibling module: {SHORTS_SCRIPTS / _module_file}")
 if str(SHORTS_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SHORTS_SCRIPTS))
-from youtube_safe_title import ffmpeg_expressions
-from brand_title_style import style_manifest
+import youtube_safe_title as _youtube_safe_title
+import brand_title_style as _brand_title_style
+for _module, _module_file in (
+    (_youtube_safe_title, "youtube_safe_title.py"),
+    (_brand_title_style, "brand_title_style.py"),
+):
+    if Path(_module.__file__).resolve() != (SHORTS_SCRIPTS / _module_file).resolve():
+        raise ImportError(f"sibling module mismatch: {_module_file}")
+ffmpeg_expressions = _youtube_safe_title.ffmpeg_expressions
+style_manifest = _brand_title_style.style_manifest
 
 from typing import Any
 
@@ -1189,11 +1200,12 @@ def render(root: Path, raw: dict[str, Any]) -> dict[str, Any]:
         xexpr = _drawtext_coord(safe["x"])
         yexpr = _drawtext_coord(safe["y"])
         line_spacing = int(canonical_title["line_spacing"])
+        box_color = str(canonical_title["box_color"])
         graph.append(
             f"[{previous}]drawtext=fontfile='{font}':textfile='{title_file}':"
             f"fontcolor=white:fontsize={int(spec['title']['font_size'])}:line_spacing={line_spacing}:x={xexpr}:"
             f"y={yexpr}:"
-            f"box=1:boxcolor=black@0.58:boxborderw={box_border},setparams=range=limited,format=yuv420p[v]"
+            f"box=1:boxcolor={box_color}:boxborderw={box_border},setparams=range=limited,format=yuv420p[v]"
         )
     else:
         graph.append(f"[{previous}]setparams=range=limited,format=yuv420p[v]")

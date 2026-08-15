@@ -7,9 +7,16 @@ from pathlib import Path
 # Compatibility seam: the episode builder delegates still-scene motion and
 # typography to the independently testable still-image-animation skill.
 STILL_ANIMATION_SCRIPTS = Path(__file__).resolve().parents[2] / 'still-image-animation' / 'scripts'
+STILL_ANIMATION_MODULE = STILL_ANIMATION_SCRIPTS / 'still_image_animation.py'
+if not STILL_ANIMATION_MODULE.is_file():
+    raise ImportError(f'missing sibling module: {STILL_ANIMATION_MODULE}')
 if str(STILL_ANIMATION_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(STILL_ANIMATION_SCRIPTS))
-from still_image_animation import visual_filter as _visual_filter, resolve_font
+import still_image_animation as _still_image_animation
+if Path(_still_image_animation.__file__).resolve() != STILL_ANIMATION_MODULE.resolve():
+    raise ImportError('sibling module mismatch: still_image_animation.py')
+_visual_filter = _still_image_animation.visual_filter
+resolve_font = _still_image_animation.resolve_font
 
 W, H, FPS = 1080, 1920, 30
 # Aim the center of every text block at 4/5 of frame height, while reserving

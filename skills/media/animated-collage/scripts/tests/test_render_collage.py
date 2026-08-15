@@ -17,6 +17,26 @@ SPEC.loader.exec_module(mod)
 
 
 class LayoutTests(unittest.TestCase):
+    def test_cross_skill_imports_fail_closed_in_all_entrypoints(self):
+        module_file = getattr(mod, "__file__", None)
+        assert module_file
+        media_root = Path(module_file).resolve().parents[2]
+        scripts = (
+            Path(module_file),
+            media_root / "still-image-animation" / "scripts" / "still_image_animation.py",
+            media_root / "travel-social-publisher" / "scripts" / "build_episode.py",
+        )
+        for script in scripts:
+            with self.subTest(script=script.name):
+                source = script.read_text(encoding="utf-8")
+                self.assertIn("missing sibling module", source)
+                self.assertIn("sibling module mismatch", source)
+
+    def test_title_box_color_comes_from_canonical_style_manifest(self):
+        source = Path(mod.__file__).read_text(encoding="utf-8")
+        self.assertNotIn("boxcolor=black@0.58", source)
+        self.assertIn('canonical_title["box_color"]', source)
+
     def sources(self, n: int, safe: tuple[int, ...] = ()):
         return [{"path": f"photos/{i}.jpg", "title_safe": i in safe} for i in range(n)]
 

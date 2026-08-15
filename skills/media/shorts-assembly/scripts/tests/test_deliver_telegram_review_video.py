@@ -19,6 +19,19 @@ def load_module():
 
 
 class TelegramDeliveryDiagnosticsTests(unittest.TestCase):
+    def test_gateway_environment_parser_is_allowlisted_and_non_utf8_safe(self):
+        module = load_module()
+        raw = (
+            b"TELEGRAM_BOT_TOKEN=token\0"
+            b"TELEGRAM_PROXY=socks5://proxy\0"
+            b"OAUTH_SECRET=must-not-escape\0"
+            b"BROKEN=\xff\0"
+        )
+        self.assertEqual(
+            module.parse_gateway_environment(raw),
+            {"TELEGRAM_BOT_TOKEN": "token", "TELEGRAM_PROXY": "socks5://proxy"},
+        )
+
     def test_classifies_latest_failure_for_exact_artifact(self):
         module = load_module()
         with tempfile.TemporaryDirectory() as td:
@@ -34,6 +47,29 @@ class TelegramDeliveryDiagnosticsTests(unittest.TestCase):
             result = module.classify_latest_failure(log, Path(artifact))
             self.assertEqual(result["classification"], "timeout")
             self.assertIn("Timed out", result["error"])
+
+    def test_diagnostic_does_not_match_artifact_path_prefix(self):
+        module = load_module()
+        with tempfile.TemporaryDirectory() as td:
+            log = Path(td) / "gateway.log"
+            artifact = Path("/tmp/review.mp4")
+            log.write_text(
+                "Failed to send video: Timed out\n"
+                f"send_video fallback: native video send unavailable for {artifact}.v2.mp4\n",
+                encoding="utf-8",
+            )
+            self.assertIsNone(module.classify_latest_failure(log, artifact)["classification"])
+
+    def test_diagnostic_reads_only_bounded_log_tail(self):
+        module = load_module()
+        with tempfile.TemporaryDirectory() as td:
+            log = Path(td) / "gateway.log"
+            artifact = Path("/tmp/review.mp4")
+            with log.open("w", encoding="utf-8") as handle:
+                handle.write("Failed to send video: Timed out\n")
+                handle.write(f"send_video fallback: native video send unavailable for {artifact}\n")
+                handle.write("x" * (module.GATEWAY_LOG_TAIL_BYTES + 1024))
+            self.assertIsNone(module.classify_latest_failure(log, artifact)["classification"])
 
     def test_gateway_diagnostic_redacts_bot_token_and_proxy_credentials(self):
         module = load_module()
@@ -74,6 +110,44 @@ class TelegramDeliveryDiagnosticsTests(unittest.TestCase):
             wrapped = RuntimeError("wrapped")
             wrapped.__cause__ = timeout_type("ambiguous")
             self.assertIsNone(module.safe_retry_delay(wrapped, 1), name)
+
+    def test_write_report_does_not_follow_predictable_tmp_symlink(self):
+        module = load_module()
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            report = root / "delivery.json"
+            victim = root / "victim.txt"
+            victim.write_text("immutable", encoding="utf-8")
+            Path(str(report) + ".tmp").symlink_to(victim)
+            module.write_report(report, {"status": "ok"})
+            self.assertEqual(victim.read_text(encoding="utf-8"), "immutable")
+            self.assertEqual(json.loads(report.read_text(encoding="utf-8")), {"status": "ok"})
+            self.assertEqual(report.stat().st_mode & 0o777, 0o600)
+
+    def test_create_derivative_reuses_matching_verified_copy(self):
+        module = load_module()
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            source = root / "source.mp4"
+            output = root / "review.mp4"
+            source.write_bytes(b"source")
+            output.write_bytes(b"review")
+            report = {
+                "status": "ok",
+                "source": {"sha256": module.sha256(source)},
+                "output": {
+                    "sha256": module.sha256(output),
+                    "max_mib_policy": 18.0,
+                },
+                "video": {"width": 720, "height": 1280},
+            }
+            Path(str(output) + ".report.json").write_text(json.dumps(report), encoding="utf-8")
+            original_run = module.run
+            module.run = lambda *args, **kwargs: self.fail("renderer must not run")
+            try:
+                self.assertEqual(module.create_derivative(source, output, 18.0, 720, 1280), output)
+            finally:
+                module.run = original_run
 
 
 @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "ffmpeg required")

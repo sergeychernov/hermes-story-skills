@@ -12,10 +12,21 @@ from pathlib import Path
 import sys
 
 SHORTS_SCRIPTS = Path(__file__).resolve().parents[2] / "shorts-assembly" / "scripts"
+for _module_file in ("youtube_safe_title.py", "brand_title_style.py"):
+    if not (SHORTS_SCRIPTS / _module_file).is_file():
+        raise ImportError(f"missing sibling module: {SHORTS_SCRIPTS / _module_file}")
 if str(SHORTS_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SHORTS_SCRIPTS))
-from youtube_safe_title import ffmpeg_expressions
-from brand_title_style import style_manifest
+import youtube_safe_title as _youtube_safe_title
+import brand_title_style as _brand_title_style
+for _module, _module_file in (
+    (_youtube_safe_title, "youtube_safe_title.py"),
+    (_brand_title_style, "brand_title_style.py"),
+):
+    if Path(_module.__file__).resolve() != (SHORTS_SCRIPTS / _module_file).resolve():
+        raise ImportError(f"sibling module mismatch: {_module_file}")
+ffmpeg_expressions = _youtube_safe_title.ffmpeg_expressions
+style_manifest = _brand_title_style.style_manifest
 
 DEFAULT_WIDTH = 1080
 DEFAULT_HEIGHT = 1920

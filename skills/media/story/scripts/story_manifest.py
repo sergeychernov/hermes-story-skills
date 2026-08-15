@@ -106,6 +106,21 @@ def validate_story(raw: dict) -> dict:
         normalized_scenes.append(scene)
     result["scenes"] = normalized_scenes
 
+    all_scene_ids = {scene["id"] for scene in normalized_scenes}
+    for scene in normalized_scenes:
+        if scene["kind"] != "group":
+            continue
+        members = scene["members"]
+        if len(set(members)) != len(members):
+            raise ValueError(f"group scene {scene['id']} member ids must be unique")
+        if scene["id"] in members:
+            raise ValueError(f"group scene {scene['id']} cannot contain itself")
+        unknown_members = sorted(set(members) - all_scene_ids)
+        if unknown_members:
+            raise ValueError(
+                f"group scene {scene['id']} references unknown member ids: {', '.join(unknown_members)}"
+            )
+
     publication = result.get("publication", {})
     if not isinstance(publication, dict):
         raise ValueError("publication must be an object")
