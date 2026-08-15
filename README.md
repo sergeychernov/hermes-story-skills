@@ -29,7 +29,7 @@ By default, durable story archives live under the domain-neutral `~/stories/YYYY
 |------|---------|
 | **Python 3.10+** | all skill scripts; PEP 604 union syntax is used |
 | **`ffmpeg` and `ffprobe` in `PATH`** | scene rendering, voiceover, soundtrack, assembly and package verification |
-| **NumPy** | `story-soundtrack` and deterministic music helpers |
+| **NumPy** | `story-soundtrack` |
 | **Pillow** | `static-cover-collage` rendering and tests |
 
 Quick check:

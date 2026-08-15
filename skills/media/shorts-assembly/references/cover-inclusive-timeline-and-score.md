@@ -13,9 +13,7 @@ Use this for a YouTube Short whose opening cover must control platform previews.
    - expected frame count = cover frames + master frames;
    - full decode succeeds;
    - inspect cover at 0.000, 0.033, 0.100, 0.250, 0.500, final cover frame; inspect first live frame at 0.800.
-5. Compose rhythm and melody stems against the exact new duration from `t=0`. The intro motif is the first phrase of the score, not a separately appended ident.
-6. Make cover an explicit `silent` routing window. At first live `voice` frame, keep continuous rhythm at the approved speech level and set melody to zero; silent scenes receive full rhythm + melody.
-7. Create a new full music bed and speech-aware mix. Do not delay/reuse a pre-cover mix.
+5. Hand the verified frame contract to `story-soundtrack`. That owner creates a new revision from `t=0`, treats the cover as an explicit routing window, and returns a hash-bound approved mix. Do not delay/reuse a pre-cover mix or compose an ident inside `shorts-assembly`.
 
 ## Timeline pitfalls
 

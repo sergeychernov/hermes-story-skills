@@ -23,6 +23,8 @@ LEGACY_IDENTIFIERS = (
     "chinese_travel_pentatonic_v1",
     "pentatonic-story-score.json",
     "story-audio-approval-preview.json",
+    "deterministic-story-music.md",
+    "test_story_music_tools",
 )
 
 
@@ -34,7 +36,16 @@ class SoundtrackOwnershipTests(unittest.TestCase):
         diagnosis = SOUNDTRACK / "references/subjective-soundtrack-diagnosis.md"
         self.assertTrue(diagnosis.is_file())
         soundtrack_skill = (SOUNDTRACK / "SKILL.md").read_text(encoding="utf-8")
+        shorts_skill = (SHORTS / "SKILL.md").read_text(encoding="utf-8")
         self.assertIn("references/subjective-soundtrack-diagnosis.md", soundtrack_skill)
+        self.assertIn("version: 1.0.2", soundtrack_skill)
+        self.assertIn("version: 1.5.1", shorts_skill)
+        self.assertIn("stop soundtrack work in this skill", shorts_skill)
+        self.assertNotIn("Render generated accompaniment", shorts_skill)
+        self.assertNotIn("Audio-only approval files", shorts_skill)
+
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        self.assertNotIn("deterministic music helpers", readme)
 
         active_text = "\n".join(
             path.read_text(encoding="utf-8", errors="strict")
