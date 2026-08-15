@@ -27,7 +27,7 @@ Place a low-detail/no-face image in the bottom panel and allow the lower-fifth t
 
 ### Five photos
 
-A dense `2 + 1 + 2` arrangement:
+A dense `2 + 1 + 2` arrangement, named `u-lp-l-pp.py` by the reusable direction/row/cell grammar:
 
 - top: `720×650` plus `360×650`;
 - middle: `1080×500`;

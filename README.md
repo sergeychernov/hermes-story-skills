@@ -85,7 +85,7 @@ These are not needed to run the unit tests above, but are required for live publ
 | `shorts-assembly` → Telegram Bot review delivery | `python-telegram-bot` with proxy extras when a proxy is configured |
 | `social-publisher` → YouTube | Google Cloud OAuth — see `skills/media/social-publisher/references/youtube-oauth-setup.md` |
 
-## Test all local scripts
+## Test local scripts
 
 Preferred one-command runner:
 

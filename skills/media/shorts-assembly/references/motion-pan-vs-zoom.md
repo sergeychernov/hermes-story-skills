@@ -69,15 +69,8 @@ After rendering, always:
 4. Confirm title position with a mid-clip frame (should be 66–71% of height
    for 720×1280).
 
-## Skills repo source
+## Skill source of truth
 
-Media skills source repository:
-`/opt/data/home/story-skills` (github.com/sergeychernov/hermes-story-skills).
+The canonical source is `github.com/sergeychernov/hermes-story-skills`; a globally installed skill is only a runtime mirror and must not be treated as the source of pending fixes. Make changes in a feature-branch checkout, verify them, and deliver them through a reviewed PR before synchronizing the installed copy.
 
-Check for updates before starting a session:
-```bash
-cd /opt/data/home/story-skills && git fetch origin && git diff HEAD origin/main --stat
-```
-
-The `LOWER_FIFTH_Y` fix (absolute `360` → proportional `h*0.1875`) is applied
-in the installed skill but needs a PR to the source repo.
+The repository already vendors the proportional lower-fifth title formula. Do not reapply the obsolete absolute-position fix described by older project notes.

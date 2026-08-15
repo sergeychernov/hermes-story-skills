@@ -18,13 +18,13 @@ Reusable renderer names describe motion and geometry rather than the project sub
 
 - `u` means a dominant upward reveal;
 - `p` means a portrait cell and `l` means a landscape cell;
-- every hyphen after the direction separates canvas rows;
+- the first hyphen separates the direction token from the first row, and every later hyphen separates canvas rows;
 - letters inside one row list its cells from left to right.
 
 The historical layouts therefore map to reusable names:
 
 - `u-pp-pp.py`: four staggered portrait cards in two rows.
-- `u-lp-l-pp.py`: asymmetric five-panel layout (`720+360`, full-width center, `540+540`).
+- `u-lp-l-pp.py`: historical asymmetric five-panel layout (`720×650 + 360×650` / `1080×500` / `540×770 + 540×770`). This records the one-off renderer, not the later square-bottom `SCENE_005_BASE_CELLS` overlap fixture.
 - `u-pp-l-pp.py`: five-panel `2+1+2`, with a large landscape center row.
 - `u-pp-pp-pp.py`: six-panel `2x3` route sequence.
 - `u-pp-pp-l.py`: five-panel `2+2+1`, with a face-free full-width landscape title panel.
