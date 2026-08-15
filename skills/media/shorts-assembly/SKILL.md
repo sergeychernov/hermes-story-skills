@@ -1,13 +1,13 @@
 ---
 name: shorts-assembly
 description: Collect clips into titled 9:16 Shorts compilations.
-version: 1.5.4
+version: 1.5.5
 author: Hermes Agent
 license: MIT
 metadata:
   hermes:
     tags: [shorts, youtube, vertical-video, titling, ffmpeg, assembly]
-    related_skills: [story, story-soundtrack, still-image-animation, social-publisher]
+    related_skills: [story, story-soundtrack, still-image-animation, animated-collage, social-publisher]
 ---
 
 # Shorts Assembly
@@ -22,22 +22,15 @@ titled, and concatenated into a single Shorts compile for a channel.
 
 ### 0. Load skills BEFORE touching media (critical)
 
-This step exists because agents repeatedly start rendering without loading this
-skill, then hand-roll ffmpeg with `borderw=3` titles instead of the skill-styled
-box overlay, waste a FLUX 3 credit on a child photo, and skip animation — all
-failures the skills already warn about. Load these first:
+Load the canonical owner before rendering or assembly:
 
-1. **`shorts-assembly`** (this skill) — project layout, title choices, assembly.
-2. **`still-image-animation`** — for every narrative still-photo scene. Approved static cover insertion is the exception: this skill renders the approved pixels for the exact target frame count without inheriting animation duration or fades. For narrative stills, `animate_still.py`
-   imports `scripts/brand_title_style.py`; current `sergey-vertical-title-v2` is DejaVu Sans Bold, fontsize 54, line_spacing 12, boxborderw 24, boxcolor black@0.406, complete box bottom at 72%. The helper and font SHA-256 make this reproducible across sessions.
-3. **`story`** — if building a narrative arc across clips (optional for simple
-   compilations).
-4. **`story-soundtrack`** — required when generated music or source-audio mixing is involved. Load it before any soundtrack work and accept only its approved handoff for final mux.
+1. **`shorts-assembly`** — title choices, ordering, timeline insertion, mux, and final-film verification.
+2. **`still-image-animation`** — one narrative still-photo scene.
+3. **`animated-collage`** — one scene built from 2–6 photos.
+4. **`story`** — narrative arc and approval state across scenes.
+5. **`story-soundtrack`** — generated music or source-audio mixing; assembly accepts only its approved handoff.
 
-Do NOT hand-roll drawtext commands with `borderw=3`. That style is outdated;
-the skill-styled semi-transparent box from `still-image-animation` is the
-correct look. For video clips (not stills), apply the same box-style drawtext
-manually — see `references/ffmpeg-titling-recipes.md` for the recipe.
+For an approved static cover, assembly renders the approved pixels for the exact target frame count without inheriting narrative-still duration or fades. For video titles, use style and geometry from the shared helpers as described in `references/ffmpeg-titling-recipes.md`.
 
 ### 1. Set up project folder
 
@@ -60,7 +53,7 @@ This makes every later operation faster and prevents temporal drift or repeated 
 
 #### Rebuilding an existing story or a later part
 
-When a user asks to rebuild scenes that predate this rule, stop any in-flight part assembly first: its output is stale. Audit every selected scene by type. For real video, create a fresh canonical derivative from the preserved archived source, then title it with `--audio-already-normalized`; never normalize a prior titled export. For a multi-photo scene, recreate the collage directly from archived photos through the current `animated-collage` skill rather than merely converting an old collage MP4. Re-render a single-photo scene from its archived source through `still-image-animation` as well. Only after every selected scene meets the current contract may a new review master be assembled. If the user changes a part's narrative order, store and pass an explicit ordered scene list for that part; do not silently mutate archive chronology.
+Before assembly, audit every selected scene by type. For real video, create the canonical derivative from the preserved archived source, then title it with `--audio-already-normalized`; never normalize a titled export. For a multi-photo scene, consume the verified output from `animated-collage`. For a single photo, consume the verified output from `still-image-animation`. Assemble only when every scene report proves the intended owner path and current output hash. Store and pass an explicit ordered scene list for each part; do not silently mutate archive chronology.
 
 ### 2. Per-clip titles
 
@@ -105,15 +98,14 @@ python3 <still-image-animation-skill-dir>/scripts/animate_still.py \
   --root <project-folder> --spec <clip-spec.json>
 ```
 
-This produces a correctly styled, animated, verified MP4 in one step. The title overlay imports `scripts/brand_title_style.py`; never duplicate its parameters. Current `sergey-vertical-title-v2` uses `box=1:boxcolor=black@0.406:boxborderw=24`, DejaVu Sans Bold, fontsize 54, line_spacing 12 at 1080 px width.
+This produces a correctly styled, animated, verified MP4 in one step. The title overlay imports `scripts/brand_title_style.py`; never duplicate its parameters in this skill or a project.
 Position is generated by the shared `scripts/youtube_safe_title.py` policy — proportional to height, not fixed pixels. For Sergey's vertical-video workflow, align the **bottom edge of the complete title box** (including `boxborderw`) exactly to the 72%-of-height boundary so the lower 28% is free **without an extra hidden lift**. Do not combine that boundary with a second stylistic anchor. Keep the box left of the reserved right-side controls zone. Project renderers must import this helper instead of copying an FFmpeg expression.
 
 #### Path B — existing video: ffmpeg drawtext with box style
 
-For titling an existing video clip (not a still), use ffmpeg drawtext with the
-**box style** matching `still-image-animation`, NOT the old `borderw=3` style.
+For titling an existing video clip, use FFmpeg `drawtext` with style and geometry obtained from the canonical helpers.
 
-For an active story that will receive multiple clips or revisions, wrap this path in a reusable project script rather than repeatedly assembling terminal commands. The script should accept explicit root/input/output/title arguments, write the title to a textfile, and emit a report containing the output hash, dimensions, duration, source range, decoded audio streams, integrated loudness, true peak, plus middle and late QA-frame paths. For canonical `normalized/` input, use `-c:a copy` so no denoise/loudness pass is applied twice; only archived/unprocessed input may receive the class-appropriate ingestion audio chain. This keeps title and audio corrections deterministic and makes preservation/processing claims verifiable.
+Follow `references/ffmpeg-titling-recipes.md`. Reusable behavior belongs in the skill, not a project-local wrapper. The renderer must accept explicit root/input/output/title arguments, use a textfile, and report output hash, dimensions, duration, source range, decoded audio streams, integrated loudness, true peak, plus middle and late QA-frame paths. For canonical `normalized/` input, use `-c:a copy` so no denoise/loudness pass is applied twice.
 
 **Critical pitfall:** `drawtext` `text=` breaks on colons and certain special
 characters because they delimit filter options. `text='6:00 AM'` → parse error.
@@ -130,11 +122,9 @@ Import the returned/shared expressions in every renderer rather than copying con
 
 Measure the encoded output; filter targets and expressions are not proof of achieved placement, loudness, or peak.
 
-Key parameters:
-- `scripts/brand_title_style.py` — canonical machine-readable source. Current `sergey-vertical-title-v2`: `box=1:boxcolor=black@0.406:boxborderw=24`, DejaVu Sans Bold, fontsize 54, line_spacing 12 at 1080 px; report the resolved font SHA-256.
-- `line_spacing=12` — multi-line text in a single drawtext
-- `fontsize=54` — slightly larger than old 52
-- `scripts/youtube_safe_title.py` — single source of truth for both axes. It keeps the complete title box above `h*0.72` (the lower 28% is title-free) and left of the right-side YouTube controls zone. Do not duplicate percentages or FFmpeg expressions in project renderers.
+Canonical inputs:
+- `scripts/brand_title_style.py` — sole machine-readable source for typography and box styling; report the style version and resolved font SHA-256.
+- `scripts/youtube_safe_title.py` — sole geometry source for both axes; do not duplicate percentages or FFmpeg expressions in project renderers.
 - Keep the safe policy consistent across the whole story. For Sergey's vertical-video workflow, every ordinary scene uses the exact 72%-height box-bottom anchor; incidental passers-by, crowds, cars, pavement, and background objects may be covered and are not reasons to move a title to the middle. Redesign crop/layout only for a story-critical subject, and ask before breaking the shared anchor. Verify the title box on start/middle/end frames and deliver the MP4 preview.
 
 **Semantic title-zone QA:** a title is not valid merely because it is readable and inside the platform safe zone. FFmpeg `drawtext` does not wrap automatically: before rendering, measure or conservatively preflight every line against the safe width and insert semantic 2–3 line breaks. Prefer balanced wrapping over shrinking the canonical brand font. Inspect start/middle/end frames and verify that the complete title box is not clipped at either horizontal edge and does not cover faces, primary action, measurements, signs, labels, or other evidence the scene is meant to show. Start with `lower_fifth`; use `middle` only when the actual middle band is semantically empty. If a title obscures content, reposition it or revise crop/motion and rerender. For grouped scenes, remove any baked local title before adding one group-wide title; never stack or ghost two title layers.
@@ -143,67 +133,15 @@ Key parameters:
 
 **Brand-version propagation:** `scripts/brand_title_style.py` is the sole source for typography and title-box parameters. A user-requested visual change such as box opacity creates a new style version; every title-capable renderer must import the helper, and previously approved scenes that are rerendered with the new style return to pending review.
 
-### 4. Still photos → animated video clips
+### 4. Derived still and collage scenes
 
-**Always use `still-image-animation`** (`animate_still.py`) for still photos.
-Do NOT create static stills with bare ffmpeg. The script provides:
-- pan/zoom motion (verified `motion_detected: true`)
-- skill-styled title overlay with semi-transparent box
-- fade in/out (0.2s each)
-- JSON verification report (dimensions, hash, decode check)
+`shorts-assembly` does not choose single-image motion or multi-image collage geometry:
 
-Write a spec JSON:
+- for one narrative photo, load `still-image-animation` and consume its verified MP4/report;
+- for 2–6 photos forming one collage beat, load `animated-collage` and consume its verified MP4/report;
+- for an approved static cover, follow `references/platform-cover-timeline-insertion.md` without inheriting narrative-still animation defaults.
 
-```json
-{
-  "schema_version": 1,
-  "source": "clip02-source.jpg",
-  "output": "clip02-titled.mp4",
-  "width": 720, "height": 1280, "fps": 30, "duration": 5.0,
-  "fit_mode": "crop",
-  "motion": "pan_left",
-  "focus_x": 0.35, "focus_y": 0.50,
-  "pan_easing": "focus_dwell",
-  "title": "Multi-line\\ntitle\\ntext",
-  "overwrite": true
-}
-```
-
-**Choosing motion for still photos:**
-
-- **`pan_left` / `pan_right`** — for scenes implying movement (riding, walking,
-  running). Pan creates the impression of travelling through the scene. Choose
-  direction by narrative: `pan_left` (camera moves left) feels like moving
-  forward into the scene; `pan_right` reveals from subject outward. Set
-  `focus_x` to the subject's normalized coordinate in the **source image**.
-  The pan must cross the full horizontal crop range: move fast at the edges,
-  decelerate while the crop passes the subject, then accelerate toward the far
-  edge. Do not pre-crop the source merely to keep the subject permanently in
-  frame. Inspect a start frame, a frame at the focus crossing, and an end
-  frame; a brief view of the far-edge background is intentional when the
-  narrative calls for a complete sweep.
-- **`zoom_in`** — for static, contemplative scenes (portraits, objects). Not
-  for movement scenes — a zoom on a child sitting on a bike feels wrong; pan
-  conveys the riding impulse.
-- **`zoom_out`** — for establishing or reveal shots.
-- **`none`** — only when motion is explicitly unwanted.
-
-**Title-safe still composition:** visual QA must protect the named object/action as well as faces. If the lower-fifth title covers lifted food, hands, a toy, a foreground bowl, or another story anchor, do not accept the render merely because the face is clear. First try a content-aware zoom and vertical crop offset that keeps the frame photo-filled; change from pan to zoom when the scene is inherently static. Use a designed title-safe canvas only when crop/zoom cannot preserve all anchors, and keep any tonal extension as small and intentional as possible rather than leaving a large blank footer. See `references/title-safe-single-still-composition.md`.
-
-### 4a. Animated photo collages
-
-When the user asks for an **animated collage**, treat it as a designed 9:16 video scene, not a static JPEG. Preserve each original, then render the panels in one FFmpeg filter graph from those originals.
-
-**Renderer gate:** use an existing skill/project animation script when one is available. Do not replace it with an inline terminal filter graph or a one-off bespoke layout. If the project has no suitable renderer, create a reusable script plus explicit inputs/title/output configuration, run that script, and retain its verification report. A correction such as «используй скрипты для анимаций» means rebuild through this scripted path rather than defending an earlier ad-hoc render.
-
-- Default to a full-frame grid/strip layout that keeps faces visible; visually inspect every panel and use a per-image crop offset for portrait inputs rather than center-cropping blindly.
-- **Source fidelity:** build a new collage from the images the user just supplied. Do not substitute frames from an earlier video merely because it is already in the project. If the requested source set is unclear, identify the available asset groups before rendering.
-- **Batch boundary from conversation flow:** a consecutive run of images, even when each was followed by a per-image inspection question, followed by an unqualified «сделай коллаж» normally forms one collage source group. Archive every image in that run and apply one three-title gate to the collage, not one gate per image. Do not pull in older approved scenes. Ask which assets only when another unresolved image group overlaps or the user explicitly changes topic.
-- **Mixed orientations:** make the finished collage dense. By default, every card must be filled edge-to-edge with an actual photo — **no blurred duplicate backgrounds and no empty fields**. Use deliberate aspect-fill crops and per-image crop offsets that retain faces, children, and the story object (for example, an RC car); do not center-crop blindly. Use a blurred-card treatment only when the user explicitly asks for it.
-- If a timed entrance is requested, animate the *panel position* with `overlay` expressions, not a zoom of the finished collage. For a “fly in over 2 seconds, hold 3 seconds” request, stagger panel arrivals from distinct sides during `t=0…2`, then pin every `x/y` coordinate for `t=2…5`; do not add a fade-out that shortens the requested still hold.
-- The collage title must use the **same lower-fifth semi-transparent box style** as every other clip. Never create a bespoke top header for a collage unless the user explicitly asks for one, and do not leave unused header space after moving a title into the common style. Design the panel layout around the caption: keep faces and the primary action in uncovered panels/areas (for example, put a trampoline scene above a lower caption rather than behind it).
-- **Use space according to the actual subjects, not a blanket no-overlap rule.** Inspect every source before choosing the grid. When the lower-fifth area contains no face, person, readable sign, or critical action, let the standard title box overlay a photo and fill the rest of the 9:16 canvas with real panels. Do not reserve a large title-only band or decorative background merely to avoid overlap. For four landscape images, test a dense layout such as `wide hero → two middle panels → wide bottom panel under the title`; reject it only when visual QA shows a meaningful crop or obstruction.
-- Verify a mid-entrance frame, one frame just after the final panel arrives, and a late hold frame. Confirm that the late frames have no remaining panel motion, every panel is photo-filled, and the title is readable without clipping or covering the main subject.
+Assembly owns only ordering, frame-exact timeline placement, audio handoff, mux, and final-film verification. Motion, crop, layout, entrance timing, and scene-local visual QA remain with the rendering skill that produced the scene.
 
 ### 4b. Stop-frame photo-card overlays
 
@@ -335,7 +273,7 @@ On low-power systems, do **not** use MPEG-TS or direct-MP4 stream-copy concat fo
   FLUX 3 credits on child photos, and skip animation. Always load
   `shorts-assembly` and `still-image-animation` before any rendering.
 - **Title style drift:** The canonical machine-readable style is `sergey-vertical-title-v2` from `scripts/brand_title_style.py`. Never copy its values into project renderers; import the helper so later brand revisions propagate.
-- **Exact-vs-minimum safe margin:** Align the complete title-box bottom exactly to `h*0.72`; do not merely enforce `>=15%` while also centering around another anchor. The latter silently lifts titles and wastes composition space. Verify the actual box edge numerically.
+- **Title position drift:** Align the complete title-box bottom exactly to `h*0.72`; do not combine that boundary with a second aesthetic anchor. Verify the actual box edge numerically.
 - **Duplicated title-safe constants:** Do not embed percentages independently in still, video, and collage renderers. Import or invoke `scripts/youtube_safe_title.py`. For Sergey's YouTube workflow the lower 28% must remain entirely free of the complete title box, and the right controls zone must also remain clear.
 - **JPEGs presented as video previews:** Start/middle/end JPEGs are QA artifacts, not user-requested preview clips. When reviewing a corrected scene, attach the actual MP4; include stills only as supplementary evidence.
 - **Unapproved per-scene title exceptions:** Do not switch an ordinary scene to `middle` merely because the standard box overlaps incidental people. Random passers-by and background objects may be covered; the shared 72%-height anchor wins. Protect only story-critical subjects/actions, and ask before breaking the common title line.
@@ -348,15 +286,9 @@ On low-power systems, do **not** use MPEG-TS or direct-MP4 stream-copy concat fo
   FFmpeg filter parser. Otherwise parsing may fail later at `box=1` with a
   misleading `No option name near ...` error. Keep this escaping inside the
   reusable renderer instead of fixing individual terminal commands.
-- **Long or repetitive titles:** FFmpeg `drawtext` does not auto-wrap. Before rendering, read titles in editorial order, measure or preflight every line against the canonical safe width, and fit the complete box inside the canvas and reserved controls strip. Semantically wrap exact approved wording into balanced 2–3 lines before considering a smaller font; if it still cannot fit, get approval for a shorter phrase. Inspect start/middle/end for edge clipping. Reject adjacent captions that repeat the same lead phrase or fact without adding a new beat. See `references/title-fit-editorial-and-rebuild-gates.md`.
+- **Long or repetitive titles:** FFmpeg `drawtext` does not auto-wrap. Before rendering, read titles in editorial order, measure or preflight every line against the canonical safe width, and fit the complete box inside the canvas and reserved controls strip. Semantically wrap exact approved wording into balanced 2–3 lines; if it still cannot fit, get approval for a shorter phrase rather than inventing a local font size. Inspect start/middle/end for edge clipping. Reject adjacent captions that repeat the same lead phrase or fact without adding a new beat. See `references/title-fit-editorial-and-rebuild-gates.md`.
 - **Stale final after interrupted rebuild:** A corrected standalone scene does not prove the assembled film changed. After assembly, fully decode the final MP4, extract the corrected scene from that final MP4, and confirm the final hash or modification state changed before delivery.
-- **Long title clipping at 720×1280:** The default 54–58 px style can overflow
-  narrow frames; a semi-transparent box does not make clipped letters valid.
-  Before delivery, inspect a representative title frame. If any character is
-  cut at an edge, preserve the wording but split it semantically and/or use a
-  smaller 42 px title treatment with the same box style. Render a clean
-  no-title animation first, then apply that fitted title once — never burn a
-  second title over an already titled clip.
+- **Long title clipping:** The canonical helper scales the current style for the output width, but approved wording can still overflow. Preflight the complete box, wrap semantically, and request shorter wording if it cannot fit; do not invent an unversioned smaller font. Apply the title once to a clean source and inspect the encoded frame.
 - **FLUX 3 child photo rejection:** Do not send child photos to FLUX 3 video
   generation. Wastes a credit. Use `still-image-animation` instead.
 - **ffmpeg preset timeout:** `-preset slow` on 720×1280 with drawtext can

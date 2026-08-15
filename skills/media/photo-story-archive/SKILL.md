@@ -1,13 +1,13 @@
 ---
 name: photo-story-archive
 description: Build a durable chronological photo/video journal, prepare Instagram and YouTube Shorts packages, and enforce explicit approval before publishing.
-version: 1.1.3
+version: 1.1.4
 author: Sergey Chernov / Hermes Agent
 license: MIT
 metadata:
   hermes:
     tags: [photos, video, journal, instagram, reels, youtube-shorts, publishing, archive, travel]
-    related_skills: [story, still-image-animation, animated-collage, social-publisher]
+    related_skills: [story, still-image-animation, animated-collage, shorts-assembly, social-publisher]
 ---
 
 # Photo and Video Story Archive
@@ -48,7 +48,7 @@ YYYY-MM-DD-topic/
 └── publish-manifest.md      # exact approved revision and status
 ```
 
-Use `references/archive-schema.md` for journal metadata, `references/video-and-publishing-pipeline.md` for video inspection, cross-platform exports, approval and publishing, and `references/spoken-video-audio-integrity.md` whenever a clip contains speech or needs denoise/loudness normalization. Use `references/editorial-corrections-and-late-chronology.md` for late-arriving early scenes, duplicate resends, signage-based captions, and setup/payoff corrections, and `references/video-title-overlay.md` for FFmpeg `drawtext` title overlays on video clips (includes the colon-escaping pitfall and Shorts placement conventions). When explaining storage lifetime, backup scope, or read-only SMB/NFS access, follow `references/storage-and-readonly-sharing.md`: distinguish authoritative originals/state from durable derivatives, rebuildable tooling, and ephemeral cache; share the narrow archive root rather than a broad runtime/home root.
+Use `references/archive-schema.md` for journal metadata, `references/video-and-publishing-pipeline.md` for video inspection, cross-platform exports, approval and publishing, and `references/spoken-video-audio-integrity.md` whenever a clip contains speech or needs denoise/loudness normalization. Use `references/editorial-corrections-and-late-chronology.md` for late-arriving early scenes, duplicate resends, signage-based captions, and setup/payoff corrections. Title rendering belongs to `shorts-assembly`; archive only its verified derivative and provenance. When explaining storage lifetime, backup scope, or read-only SMB/NFS access, follow `references/storage-and-readonly-sharing.md`: distinguish authoritative originals/state from durable derivatives, rebuildable tooling, and ephemeral cache; share the narrow archive root rather than a broad runtime/home root.
 
 ## Response style
 

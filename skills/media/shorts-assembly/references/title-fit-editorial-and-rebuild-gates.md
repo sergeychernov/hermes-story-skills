@@ -2,7 +2,7 @@
 
 ## 1. Exact safe-line invariant
 
-For Sergey's vertical YouTube stories, the bottom edge of the **complete title box**, including `boxborderw`, is pinned to `0.85 * frame_height`. The lower 15% is therefore exactly title-free. Do not add a second centering term such as `min(h*0.70-text_h/2, ...)`; it silently lifts short and multiline titles above the requested line.
+For Sergey's vertical YouTube stories, the bottom edge of the **complete title box**, including `boxborderw`, is pinned to `0.72 * frame_height`. The lower 28% is therefore exactly title-free. Do not add a second centering term; it silently moves titles away from the canonical line.
 
 The standard title position is mandatory unless the user explicitly approves an exception. Incidental passers-by, crowds, cars, pavement, or other non-story subjects may be covered to preserve a consistent title line. Do not move a title to the middle merely to protect incidental people.
 
@@ -18,7 +18,7 @@ A title is invalid if any glyph or box edge crosses the canvas or the reserved r
 
 ## 3. Adjacent-title editorial check
 
-Read titles in editorial order before rendering. Reject adjacent titles that repeat the same lead phrase or fact without adding a new beat. Example: `Современная архитектура Пекина` followed by `Современная архитектура со стилизованными крышами` is repetitive; the second should identify its distinct observation, such as old roof forms within the new city.
+Read titles in editorial order before rendering. Reject adjacent titles that repeat the same lead phrase or fact without adding a new beat. Each title should identify the scene's distinct observation rather than restating the previous caption.
 
 ## 4. Local correction and final artifact verification
 
