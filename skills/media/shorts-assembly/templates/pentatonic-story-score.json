@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "preset": "chinese_travel_pentatonic_v1",
+  "duration": {
+    "timeline": "current-story-timeline.json"
+  },
+  "seed": 20260814,
+  "sample_rate_hz": 48000,
+  "bpm": 80.0,
+  "outputs": {
+    "rhythm_wav": "audio/music/story-rhythm-v1.wav",
+    "melody_wav": "audio/music/story-melody-v1.wav",
+    "full_preview_wav": "audio/music/story-full-preview-v1.wav",
+    "report": "audio/music/story-score-v1.report.json"
+  }
+}

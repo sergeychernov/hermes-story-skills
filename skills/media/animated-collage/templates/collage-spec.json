@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "sources": [
+    {
+      "path": "photos/portrait-1.jpg",
+      "focus_x": 0.5,
+      "focus_y": 0.42,
+      "title_safe": false
+    },
+    {
+      "path": "photos/portrait-2.jpg",
+      "focus_x": 0.5,
+      "focus_y": 0.45,
+      "title_safe": false
+    },
+    {
+      "path": "photos/detail-1.jpg",
+      "focus_x": 0.5,
+      "focus_y": 0.5,
+      "title_safe": false
+    },
+    {
+      "path": "photos/detail-2.jpg",
+      "focus_x": 0.5,
+      "focus_y": 0.5,
+      "title_safe": false
+    },
+    {
+      "path": "photos/landscape-title-zone.jpg",
+      "focus_x": 0.5,
+      "focus_y": 0.65,
+      "title_safe": true,
+      "hero": true
+    }
+  ],
+  "output": "exports/scene-collage.mp4",
+  "work_dir": "derived/scene-collage",
+  "preview_dir": "previews",
+  "width": 1080,
+  "height": 1920,
+  "fps": 30,
+  "duration": 5.0,
+  "entry_seconds": 2.0,
+  "layout": "auto",
+  "animation": "auto",
+  "gutter": 6,
+  "title": {
+    "text": "Название сцены",
+    "max_chars": 25,
+    "font_size": 54,
+    "align": "center"
+  },
+  "overwrite": false
+}

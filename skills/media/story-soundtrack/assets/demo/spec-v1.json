@@ -1,0 +1,83 @@
+{
+  "schema_version": 1,
+  "story_id": "demo-travel",
+  "revision": 1,
+  "state": "PLANNED",
+  "timeline": {
+    "path": "demo/timeline.json",
+    "fps": 30,
+    "total_frames": 90,
+    "sample_rate_hz": 48000
+  },
+  "style": {
+    "preset": "procedural_pentatonic_v1",
+    "brief": "Short pentatonic travel demo for skill verification.",
+    "bpm": 96,
+    "meter": "4/4",
+    "tonal_center": "D",
+    "pitch_collection": ["D", "E", "F#", "A", "B"],
+    "instrumentation": ["guzheng", "dizi", "bass", "drums"],
+    "seed": 4242
+  },
+  "dramaturgy": {
+    "opening": "Quiet landscape intro on silent scene.",
+    "development": "Voice scene with subdued rhythm bed.",
+    "climax_scene_id": "scene-voice",
+    "resolution": "Source music scene closes the arc."
+  },
+  "themes": [
+    {
+      "id": "theme-main",
+      "role": "primary",
+      "scene_ids": ["scene-silent", "scene-voice"],
+      "energy": 0.85
+    }
+  ],
+  "scenes": [
+    {
+      "id": "scene-silent",
+      "frames": [0, 30],
+      "audio_class": "silent",
+      "source_audio": null,
+      "theme_ids": ["theme-main"],
+      "routing": {"source_gain": 0.0, "rhythm_gain": 1.0, "melody_gain": 1.0}
+    },
+    {
+      "id": "scene-voice",
+      "frames": [30, 60],
+      "audio_class": "voice",
+      "source_audio": "demo/source/voice_scene.wav",
+      "theme_ids": ["theme-main"],
+      "routing": {"source_gain": 1.0, "rhythm_gain": 0.456, "melody_gain": 0.0}
+    },
+    {
+      "id": "scene-music",
+      "frames": [60, 90],
+      "audio_class": "source_music",
+      "source_audio": "demo/source/music_scene.wav",
+      "theme_ids": [],
+      "routing": {"source_gain": 1.0, "rhythm_gain": 0.0, "melody_gain": 0.0}
+    }
+  ],
+  "outputs": {
+    "rhythm_wav": "demo/out/v1/rhythm.wav",
+    "melody_wav": "demo/out/v1/melody.wav",
+    "full_score_wav": "demo/out/v1/full_score.wav",
+    "source_mixed_wav": "demo/out/v1/source_mixed.wav",
+    "rhythm_preview_m4a": "demo/out/v1/rhythm_preview.m4a",
+    "full_preview_m4a": "demo/out/v1/full_preview.m4a",
+    "source_mixed_approval_m4a": "demo/out/v1/source_mixed_approval.m4a",
+    "report_json": "demo/out/v1/report.json",
+    "approval_json": "demo/out/v1/approval.json",
+    "handoff_json": "demo/out/v1/handoff.json"
+  },
+  "qa": {
+    "final_lufs_min": -18.0,
+    "final_lufs_max": -14.0,
+    "final_true_peak_dbfs": -1.5,
+    "transition_ms": 300,
+    "duration_tolerance_seconds": 0.05,
+    "encoded_lufs_tolerance_db": 0.75,
+    "encoded_true_peak_tolerance_db": 0.5
+  }
+}

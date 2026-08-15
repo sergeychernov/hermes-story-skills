@@ -31,7 +31,7 @@ class VisualFilterTests(unittest.TestCase):
         # Global default: aim at 4/5, but preserve a bottom UI reserve.
         safe_y = "y=min(h*0.80-text_h/2\\,h-text_h-360)"
         self.assertEqual(result.count(safe_y), 2)
-        self.assertIn("820-text_w", result)
+        self.assertIn("w*0.80-text_w-24", result)
         self.assertIn("between(t,0.250,2.750)", result)
 
     def test_template_does_not_override_global_safe_position(self):

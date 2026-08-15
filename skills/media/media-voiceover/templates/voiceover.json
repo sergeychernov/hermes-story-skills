@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "target": {"kind": "scene", "path": "scenes/beat-01.mp4"},
+  "source_audio": "preserve",
+  "gain_db": 0.0,
+  "voiceover": {
+    "path": "voice/approved-own-voice.m4a",
+    "gain_db": 0.0,
+    "start_seconds": 0.0
+  },
+  "output": "exports/beat-01-with-own-voice.mp4",
+  "report": "exports/beat-01-with-own-voice-report.json",
+  "overwrite": false
+}

@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "input_wav": "audio/music/story-full-preview-v1.wav",
+  "duration": {
+    "timeline": "current-story-timeline.json"
+  },
+  "output_m4a": "audio/music/story-listening-preview-v1.m4a",
+  "report": "audio/music/story-listening-preview-v1.report.json",
+  "sample_rate_hz": 48000,
+  "bitrate": "256k",
+  "target_lufs": -16.0,
+  "target_true_peak_dbfs": -2.5,
+  "target_lra_lu": 8.0
+}

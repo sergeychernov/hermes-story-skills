@@ -10,7 +10,7 @@ ROOT_FIELDS = {
 }
 STATUSES = {"collecting", "title-review", "scene-review", "ready-to-render", "rendered", "verified"}
 APPROVALS = {"pending", "provisional", "approved", "rejected"}
-KINDS = {"image", "video"}
+KINDS = {"image", "video", "group"}
 PUBLICATION_STATUSES = {"not-approved", "approved", "published"}
 
 
@@ -80,6 +80,23 @@ def validate_story(raw: dict) -> dict:
         kind = str(scene.get("kind", ""))
         if kind not in KINDS:
             raise ValueError(f"unsupported scene kind: {kind}")
+        scene["kind"] = kind
+        if kind == "group":
+            members = scene.get("members")
+            if (
+                not isinstance(members, list)
+                or len(members) < 2
+                or not all(isinstance(member, str) and member.strip() for member in members)
+            ):
+                raise ValueError("group scene requires at least two non-empty member ids")
+            if not isinstance(scene.get("artifact"), str) or not scene["artifact"].strip():
+                raise ValueError("group scene requires a non-empty artifact path")
+            scene["members"] = [member.strip() for member in members]
+            scene["artifact"] = scene["artifact"].strip()
+            if "report" in scene:
+                if not isinstance(scene["report"], str) or not scene["report"].strip():
+                    raise ValueError("group scene report must be a non-empty string when provided")
+                scene["report"] = scene["report"].strip()
         approval = str(scene.get("approval", "pending"))
         if approval not in APPROVALS:
             raise ValueError(f"unsupported scene approval: {approval}")

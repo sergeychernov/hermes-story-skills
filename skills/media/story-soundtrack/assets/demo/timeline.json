@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "story_id": "demo-travel",
+  "fps": 30,
+  "total_frames": 90,
+  "scenes": [
+    {"id": "scene-silent", "frames": [0, 30]},
+    {"id": "scene-voice", "frames": [30, 60]},
+    {"id": "scene-music", "frames": [60, 90]}
+  ]
+}

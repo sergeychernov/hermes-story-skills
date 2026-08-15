@@ -2,11 +2,21 @@
 
 Composable Hermes skills for small media stories:
 
-- `story` — domain-neutral editorial orchestration;
-- `still-image-animation` — one still image to one verified motion scene;
-- `social-publisher` — gated external publication;
+- `story` — domain-neutral editorial orchestration and approval gates;
 - `photo-story-archive` — preserved source material and journal;
+- `still-image-animation` — one still image to one verified motion scene;
+- `animated-collage` — independently rendered multi-photo scenes;
+- `scene-group` — reusable editorial beats built from approved scenes;
+- `media-voiceover` — immutable source voiceover plus versioned derivatives;
+- `static-cover-collage` — platform-specific natural and collage covers;
+- `story-soundtrack` — frame-locked composition, source mix, approval and handoff;
+- `shorts-assembly` — final visual assembly and exact approved-audio mux;
+- `social-publisher` — gated external publication;
 - `travel-social-publisher` — compatibility facade for existing archives.
+
+These packages are the media dependency graph delegated by `story`. They are
+kept together so a checkout does not silently fall back to stale globally
+installed skill copies.
 
 Travel planning remains an external concern handled by the existing `travel-planning`, `maps`, and `live-transit-navigation` skills. Travel can contribute optional context to `story`; it is not a storytelling dependency.
 
@@ -18,8 +28,10 @@ By default, durable story archives live under the domain-neutral `~/stories/YYYY
 
 | Tool | Used by |
 |------|---------|
-| **Python 3.9+** | all skill scripts (stdlib only for core tests) |
-| **`ffmpeg` and `ffprobe` in `PATH`** | `still-image-animation`, `travel-social-publisher`, package verification |
+| **Python 3.10+** | all skill scripts; PEP 604 union syntax is used |
+| **`ffmpeg` and `ffprobe` in `PATH`** | scene rendering, voiceover, soundtrack, assembly and package verification |
+| **NumPy** | `story-soundtrack` and deterministic music helpers |
+| **Pillow** | `static-cover-collage` rendering and tests |
 
 Quick check:
 
@@ -71,13 +83,28 @@ These are not needed to run the unit tests above, but are required for live publ
 | Skill / workflow | Extra setup |
 |------------------|-------------|
 | `social-publisher` → Telegram Stories (user account) | `telethon`, `python-socks` — see `skills/media/social-publisher/references/telegram-stories.md` |
+| `shorts-assembly` → Telegram Bot review delivery | `python-telegram-bot` with proxy extras when a proxy is configured |
 | `social-publisher` → YouTube | Google Cloud OAuth — see `skills/media/social-publisher/references/youtube-oauth-setup.md` |
 
 ## Test all local scripts
 
+Preferred one-command runner:
+
+```bash
+PYTHON=.venv/bin/python scripts/test_all.sh
+```
+
+It executes the following suites explicitly:
+
 ```bash
 python3 -m unittest discover -s skills/media/still-image-animation/scripts/tests -p 'test_*.py' -v
 python3 -m unittest discover -s skills/media/story/scripts/tests -p 'test_*.py' -v
+python3 -m unittest discover -s skills/media/animated-collage/scripts/tests -p 'test_*.py' -v
+python3 -m unittest discover -s skills/media/scene-group/tests -p 'test_*.py' -v
+python3 -m unittest discover -s skills/media/media-voiceover/tests -p 'test_*.py' -v
+python3 -m unittest discover -s skills/media/static-cover-collage/scripts/tests -p 'test_*.py' -v
+python3 -m unittest discover -s skills/media/story-soundtrack/scripts/tests -p 'test_*.py' -v
+python3 -m unittest discover -s skills/media/shorts-assembly/scripts/tests -p 'test_*.py' -v
 python3 -m unittest discover -s skills/media/social-publisher/scripts -p 'test_*.py' -v
 python3 -m unittest discover -s skills/media/travel-social-publisher/scripts -p 'test_*.py' -v
 ```

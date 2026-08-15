@@ -9,7 +9,7 @@ from pathlib import Path
 STILL_ANIMATION_SCRIPTS = Path(__file__).resolve().parents[2] / 'still-image-animation' / 'scripts'
 if str(STILL_ANIMATION_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(STILL_ANIMATION_SCRIPTS))
-from still_image_animation import visual_filter, resolve_font
+from still_image_animation import visual_filter as _visual_filter, resolve_font
 
 W, H, FPS = 1080, 1920, 30
 # Aim the center of every text block at 4/5 of frame height, while reserving
@@ -18,6 +18,13 @@ LOWER_FIFTH_Y = 'min(h*0.80-text_h/2\\,h-text_h-360)'
 TITLE_Y = LOWER_FIFTH_Y
 CAPTION_Y = LOWER_FIFTH_Y
 CAPTION_WRAP = 22
+
+
+def visual_filter(*args, **kwargs):
+    """Preserve the facade's legacy text geometry while delegating rendering."""
+    kwargs.setdefault('title_y', TITLE_Y)
+    kwargs.setdefault('caption_y', CAPTION_Y)
+    return _visual_filter(*args, **kwargs)
 
 def run(cmd: list[str]) -> None:
     print('+', ' '.join(str(x) for x in cmd))

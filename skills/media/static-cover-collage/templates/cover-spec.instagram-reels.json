@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "output": "exports/instagram-reels-cover-v1.jpg",
+  "width": 420,
+  "height": 654,
+  "layout": {"preset": "instagram_reels_cover"},
+  "sources": [
+    {"path": "photos/hero.jpg", "focus_x": 0.5, "focus_y": 0.5, "role": "hero"},
+    {"path": "photos/people.jpg", "focus_x": 0.5, "focus_y": 0.5, "role": "support_left"},
+    {"path": "photos/detail.jpg", "focus_x": 0.5, "focus_y": 0.5, "role": "support_right"}
+  ],
+  "text": {"accent_headline": "ПЕКИН", "primary": "ПУТЕШЕСТВИЕ", "keywords": "ЗООПАРК · ПАНДЫ · ТИГРЫ"},
+  "colors": {"text_panel": "#141414", "accent": "#FFD700", "primary": "#FFFFFF", "keywords": "#FFFFFF", "stroke": "#000000"},
+  "overwrite": false
+}

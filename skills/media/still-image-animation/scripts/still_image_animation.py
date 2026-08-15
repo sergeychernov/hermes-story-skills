@@ -9,6 +9,13 @@ import subprocess
 import tempfile
 from functools import lru_cache
 from pathlib import Path
+import sys
+
+SHORTS_SCRIPTS = Path(__file__).resolve().parents[2] / "shorts-assembly" / "scripts"
+if str(SHORTS_SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(SHORTS_SCRIPTS))
+from youtube_safe_title import ffmpeg_expressions
+from brand_title_style import style_manifest
 
 DEFAULT_WIDTH = 1080
 DEFAULT_HEIGHT = 1920
@@ -62,7 +69,10 @@ FONT_RELATIVE_NAMES: tuple[str, ...] = (
     "truetype/liberation/LiberationSans-Bold.ttf",
     "truetype/noto/NotoSans-Bold.ttf",
 )
-LOWER_FIFTH_Y = "min(h*0.80-text_h/2\\,h-text_h-360)"
+LOWER_FIFTH_Y = str(ffmpeg_expressions("lower_fifth")["y"])
+BOTTOM_Y = "min(h*0.89-text_h/2\\,h-text_h-h*0.06)"
+MIDDLE_Y = str(ffmpeg_expressions("middle")["y"])
+TITLE_POSITIONS = {"lower_fifth": LOWER_FIFTH_Y, "bottom": BOTTOM_Y, "middle": MIDDLE_Y}
 # 0 = linear; 1 = full stop at focus. Keep below 1 so pan never freezes.
 PAN_DWELL_STRENGTH = 0.55
 ZOOM_AMOUNT = 0.130
@@ -135,6 +145,9 @@ def normalize_spec(raw: dict) -> dict:
     pan_easing = str(raw.get("pan_easing", "focus_dwell"))
     if pan_easing not in PAN_EASINGS:
         raise ValueError(f"unsupported pan_easing: {pan_easing}")
+    title_position = str(raw.get("title_position", "lower_fifth"))
+    if title_position not in TITLE_POSITIONS:
+        raise ValueError(f"unsupported title_position: {title_position}")
     return {
         "schema_version": 1,
         "source": _relative_path(raw.get("source"), "source"),
@@ -148,6 +161,7 @@ def normalize_spec(raw: dict) -> dict:
         "focus_x": max(0.0, min(1.0, float(raw.get("focus_x", 0.5)))),
         "focus_y": max(0.0, min(1.0, float(raw.get("focus_y", 0.5)))),
         "title": str(raw.get("title", "")).strip(),
+        "title_position": title_position,
         "overwrite": bool(raw.get("overwrite", False)),
         "fade_in": bool(raw.get("fade_in", True)),
         "fade_out": bool(raw.get("fade_out", True)),
@@ -281,10 +295,11 @@ def _drawtext_filter(
     escaped = str(text_file).replace("'", "\\'").replace(":", "\\:")
     font_path = str(font).replace(":", "\\:")
     enable = "" if start is None or end is None else f":enable='between(t,{start:.3f},{end:.3f})'"
+    canonical = style_manifest(DEFAULT_WIDTH)
     return (
         f",drawtext=fontfile='{font_path}':textfile='{escaped}':fontcolor=white:"
-        f"fontsize={fontsize}:line_spacing=10:x=max(70\\,min((w-text_w)/2\\,820-text_w)):"
-        f"y={y}:box=1:boxcolor=black@0.58:boxborderw=24{enable}"
+        f"fontsize={fontsize}:line_spacing={canonical['line_spacing']}:x={ffmpeg_expressions('lower_fifth')['x']}:"
+        f"y={y}:box=1:boxcolor={canonical['box_color']}:boxborderw={canonical['box_border']}{enable}"
     )
 
 
@@ -300,7 +315,7 @@ def _text_overlay_filters(
         return ""
     filters = ""
     if title_file:
-        filters += _drawtext_filter(title_file, font, 58, title_y)
+        filters += _drawtext_filter(title_file, font, int(style_manifest(DEFAULT_WIDTH)["font_size"]), title_y)
     if isinstance(caption_overlays, Path):
         caption_overlays = [(caption_overlays, 0.0, duration)]
     for caption_file, start, end in caption_overlays or []:
@@ -355,7 +370,10 @@ def visual_filter(
     base += _zoompan_filter(motion, focus_x, focus_y, duration, fps, width, height)
     base += _text_overlay_filters(duration, title_file, caption_overlays, title_y, caption_y)
     base += _fade_filters(duration, fade_in, fade_out)
-    return base + f",format=yuv420p[v{input_index}]"
+    # JPEG decoders expose full-range YUV. Merely requesting yuv420p at the
+    # encoder can therefore produce deprecated yuvj420p. Normalize range in
+    # the filtergraph before the final pixel-format conversion.
+    return base + f",scale=in_range=full:out_range=tv,format=yuv420p[v{input_index}]"
 
 
 def _probe(path: Path) -> dict:
@@ -417,6 +435,7 @@ def render(root: Path, raw_spec: dict) -> dict:
             focus_x=spec["focus_x"],
             focus_y=spec["focus_y"],
             motion=spec["motion"],
+            title_y=TITLE_POSITIONS[spec["title_position"]],
             width=spec["width"],
             height=spec["height"],
             fps=spec["fps"],
@@ -435,6 +454,9 @@ def render(root: Path, raw_spec: dict) -> dict:
         )
         metadata = _probe(output)
         video = next(stream for stream in metadata["streams"] if stream.get("codec_type") == "video")
+        pixel_format = video.get("pix_fmt")
+        if pixel_format != "yuv420p":
+            raise RuntimeError(f"unexpected output pixel format: {pixel_format}; expected yuv420p")
         difference = _sampled_frame_difference(output, spec["fps"], spec["duration"])
         return {
             "schema_version": 1,
@@ -445,6 +467,8 @@ def render(root: Path, raw_spec: dict) -> dict:
             "fps": spec["fps"],
             "duration": float(metadata["format"]["duration"]),
             "codec": video["codec_name"],
+            "pixel_format": pixel_format,
+            "title_position": spec["title_position"],
             "sha256": hashlib.sha256(output.read_bytes()).hexdigest(),
             "verification": {
                 "decodable": True,
