@@ -62,6 +62,7 @@ class SoundtrackOwnershipTests(unittest.TestCase):
         old_reference = SHORTS / "references/youtube-cover-insertion.md"
         insertion = SHORTS / "references/platform-cover-timeline-insertion.md"
         frame_contract = SHORTS / "references/frame-exact-cover-timeline.md"
+        shorts_skill = (SHORTS / "SKILL.md").read_text(encoding="utf-8")
         self.assertFalse(old_reference.exists())
         self.assertTrue(insertion.is_file())
 
@@ -80,6 +81,12 @@ class SoundtrackOwnershipTests(unittest.TestCase):
         self.assertIn("`static-cover-collage` ownership ends", static_skill)
         self.assertNotIn("default cover-scene duration", static_skill)
         self.assertNotIn("load `still-image-animation` and create", static_skill)
+
+        story_skill = (ROOT / "skills/media/story/SKILL.md").read_text(encoding="utf-8")
+        self.assertIn("`shorts-assembly` for exact static cover-frame rendering", story_skill)
+        self.assertNotIn("approved cover must become a timed video scene", story_skill)
+        self.assertIn("Approved static cover insertion is the exception", shorts_skill)
+        self.assertIn("never inherit its default duration or fade settings", insertion_text)
 
 
 if __name__ == "__main__":

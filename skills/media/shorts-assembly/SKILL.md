@@ -28,7 +28,7 @@ box overlay, waste a FLUX 3 credit on a child photo, and skip animation — all
 failures the skills already warn about. Load these first:
 
 1. **`shorts-assembly`** (this skill) — project layout, title choices, assembly.
-2. **`still-image-animation`** — for every still photo. Its `animate_still.py`
+2. **`still-image-animation`** — for every narrative still-photo scene. Approved static cover insertion is the exception: this skill renders the approved pixels for the exact target frame count without inheriting animation duration or fades. For narrative stills, `animate_still.py`
    imports `scripts/brand_title_style.py`; current `sergey-vertical-title-v2` is DejaVu Sans Bold, fontsize 54, line_spacing 12, boxborderw 24, boxcolor black@0.406, complete box bottom at 72%. The helper and font SHA-256 make this reproducible across sessions.
 3. **`story`** — if building a narrative arc across clips (optional for simple
    compilations).
@@ -341,9 +341,7 @@ On low-power systems, do **not** use MPEG-TS or direct-MP4 stream-copy concat fo
 - **JPEGs presented as video previews:** Start/middle/end JPEGs are QA artifacts, not user-requested preview clips. When reviewing a corrected scene, attach the actual MP4; include stills only as supplementary evidence.
 - **Unapproved per-scene title exceptions:** Do not switch an ordinary scene to `middle` merely because the standard box overlaps incidental people. Random passers-by and background objects may be covered; the shared 72%-height anchor wins. Protect only story-critical subjects/actions, and ask before breaking the common title line.
 - **Safe zone versus media fill:** Never create a black footer or empty caption band merely to satisfy title geometry. Title placement is an overlay constraint; preserve aspect ratio and use content-aware `cover` for edge-to-edge delivery unless the user explicitly approves `contain`.
-- **Static stills:** Never create a static still-to-video with bare ffmpeg.
-  Always use `still-image-animation`'s `animate_still.py` for pan/zoom motion
-  and verification.
+- **Static narrative stills:** Never create a narrative still-to-video scene with bare ffmpeg. Always use `still-image-animation`'s `animate_still.py` for pan/zoom motion and verification. Approved static cover frames are not narrative still scenes: follow `references/platform-cover-timeline-insertion.md` and render the exact assembly-owned frame count with no inherited animation fade or duration.
 - **drawtext colon crash:** Never use inline `text=` with colons. Always
   `textfile=` with a single multi-line textfile.
 - **drawtext expression commas:** When a scripted `filter_complex` embeds an
@@ -418,8 +416,7 @@ On low-power systems, do **not** use MPEG-TS or direct-MP4 stream-copy concat fo
 ## Tools
 
 - **ffmpeg + ffprobe** — titling (existing video), concatenation, inspection
-- **still-image-animation (`animate_still.py`)** — preferred for all still
-  photos; pan/zoom, title overlay, verification
+- **still-image-animation (`animate_still.py`)** — required for narrative still-photo scenes; pan/zoom, title overlay, verification. Not used for assembly-owned static cover frames unless the user requests an animated cover.
 - **vision_analyze** — verify title readability and position on preview frames
 - **bfl_flux3_image_to_video** — DO NOT use for photos with children; rejected
   with Protected Content

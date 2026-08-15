@@ -1,7 +1,7 @@
 ---
 name: story
 description: Build a small, domain-neutral story from photos, videos, comments, and optional context. Use for family moments, events, projects, walks, meals, jokes, or travel; coordinates archive, titles, per-scene approvals, rendering, music approval, and handoff to publishing without assuming travel.
-version: 1.2.0
+version: 1.2.1
 author: Sergey Chernov / Hermes Agent
 license: MIT
 metadata:
@@ -35,9 +35,9 @@ Skills are instruction documents, not callable modules. Load dependencies progre
 3. **Multi-photo scene:** load `animated-collage`; keep originals immutable and let that skill own card geometry, motion and collage QA.
 4. **Reusable scene unit:** load `scene-group` when several approved scenes become one editorial beat; group state, composition and duration belong there.
 5. **Voiceover:** load `media-voiceover`; preserve the exact recording, prepare only versioned derivatives and approve audio independently from visuals.
-6. **Cover:** load `static-cover-collage` for a designed still cover, then `still-image-animation` only when that approved cover must become a timed video scene.
+6. **Cover:** load `static-cover-collage` for the designed and approved still artifact, then `shorts-assembly` for exact static cover-frame rendering and insertion. Load `still-image-animation` only when the user separately requests an animated cover derivative.
 7. **Soundtrack:** after the visual timeline is frame-locked, load `story-soundtrack`. It exclusively owns style, themes, multitrack composition, rhythm/full/source-audio previews, feedback revisions and the hash-bound audio approval handoff.
-8. **Final video assembly:** load `shorts-assembly` only for visual concatenation, format/duration delivery and exact mux of the approved `story-soundtrack` handoff. It must not recompose, reroute, normalize or otherwise alter approved audio.
+8. **Final video assembly:** load `shorts-assembly` only for visual concatenation, exact static cover-frame rendering/insertion, format/duration delivery and exact mux of the approved `story-soundtrack` handoff. It must not recompose, reroute, normalize or otherwise alter approved audio.
 9. **Travel planning/context:** load `travel-planning`, `maps`, or `live-transit-navigation` only when the story needs those facts. Store travel data under `context.extensions.travel`; never add travel-only root fields.
 10. **Publication:** load `social-publisher` only after the final package is verified and the user asks to publish.
 
