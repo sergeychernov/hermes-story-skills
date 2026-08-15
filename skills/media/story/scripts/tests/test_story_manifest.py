@@ -118,6 +118,19 @@ class StoryManifestTests(unittest.TestCase):
                     "publication": {"status": "not-approved"},
                 })
 
+    def test_rejects_indirect_group_cycle(self):
+        with self.assertRaisesRegex(ValueError, "cycle"):
+            validate_story({
+                "schema_version": 1, "id": "cycle-story", "title": "Cycle",
+                "status": "scene-review", "arc": {"beats": []},
+                "scenes": [
+                    {"id": "s1", "media_id": "m1", "kind": "image", "approval": "approved"},
+                    {"id": "g1", "media_id": "g1.mp4", "kind": "group", "members": ["s1", "g2"], "artifact": "g1.mp4", "approval": "pending"},
+                    {"id": "g2", "media_id": "g2.mp4", "kind": "group", "members": ["s1", "g1"], "artifact": "g2.mp4", "approval": "pending"},
+                ],
+                "publication": {"status": "not-approved"},
+            })
+
     def test_rejects_group_without_two_members_or_artifact(self):
         base = {
             "schema_version": 1, "id": "bad-group", "title": "Bad", "status": "scene-review",

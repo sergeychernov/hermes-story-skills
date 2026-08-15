@@ -286,14 +286,28 @@ def _load_stems_report(validated: dict) -> dict:
     report = json.loads(report_path.read_text(encoding="utf-8"))
     kind = report.get("kind")
     if kind == "story_soundtrack_aggregate":
-        stems = report.get("phases", {}).get("stems")
+        phases = report.get("phases", {})
+        if not isinstance(phases, dict):
+            raise SystemExit("aggregate report phases must be an object")
+        stems = phases.get("stems")
         if not isinstance(stems, dict):
             raise SystemExit("aggregate report missing stems phase")
-        return stems
+        report = stems
+        kind = report.get("kind")
     if kind != "story_soundtrack_stems":
         raise SystemExit(f"expected STEMS_RENDERED stems report, got kind={kind}")
     if report.get("state") != "STEMS_RENDERED":
         raise SystemExit(f"report state must be STEMS_RENDERED, got {report.get('state')}")
+    if report.get("story_id") != validated["story_id"]:
+        raise SystemExit("stems phase story_id mismatch")
+    if int(report.get("revision", -1)) != validated["revision"]:
+        raise SystemExit("stems phase revision mismatch")
+    if int(report.get("exact_pcm_frames", -1)) != validated["timeline"]["exact_pcm_frames"]:
+        raise SystemExit("stems phase exact_pcm_frames mismatch")
+    if int(report.get("sample_rate_hz", -1)) != validated["timeline"]["sample_rate_hz"]:
+        raise SystemExit("stems phase sample_rate_hz mismatch")
+    if int(report.get("channels", -1)) != 2:
+        raise SystemExit("stems phase channels mismatch")
     return report
 
 
@@ -313,6 +327,9 @@ def _validate_stem_artifacts(validated: dict, stems_report: dict) -> None:
             if inp.getnframes() != expected_frames:
                 raise SystemExit(f"{path_key} frame count mismatch with timeline")
         entry = stems_report.get("files", {}).get(report_key, {})
+        expected_path = str(path.relative_to(validated["root"]))
+        if entry.get("path") != expected_path:
+            raise SystemExit(f"stem path mismatch for {path_key}")
         expected_hash = entry.get("sha256")
         if not expected_hash:
             raise SystemExit(f"missing required sha256 in stems report for {path_key}")

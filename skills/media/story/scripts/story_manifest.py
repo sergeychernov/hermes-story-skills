@@ -121,6 +121,28 @@ def validate_story(raw: dict) -> dict:
                 f"group scene {scene['id']} references unknown member ids: {', '.join(unknown_members)}"
             )
 
+    group_members = {
+        scene["id"]: list(scene["members"])
+        for scene in normalized_scenes if scene["kind"] == "group"
+    }
+    visiting: set[str] = set()
+    visited: set[str] = set()
+
+    def visit_group(group_id: str) -> None:
+        if group_id in visiting:
+            raise ValueError(f"group dependency cycle detected at {group_id}")
+        if group_id in visited:
+            return
+        visiting.add(group_id)
+        for member_id in group_members[group_id]:
+            if member_id in group_members:
+                visit_group(member_id)
+        visiting.remove(group_id)
+        visited.add(group_id)
+
+    for group_id in group_members:
+        visit_group(group_id)
+
     publication = result.get("publication", {})
     if not isinstance(publication, dict):
         raise ValueError("publication must be an object")

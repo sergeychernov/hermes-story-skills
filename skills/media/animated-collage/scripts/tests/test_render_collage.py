@@ -17,6 +17,22 @@ SPEC.loader.exec_module(mod)
 
 
 class LayoutTests(unittest.TestCase):
+    def test_output_may_not_alias_a_source_even_with_overwrite(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            photos = root / "photos"
+            photos.mkdir()
+            for index in range(3):
+                (photos / f"{index}.jpg").write_bytes(b"source")
+            raw = {
+                "schema_version": 1, "output": "photos/0.jpg",
+                "width": 1080, "height": 1920, "fps": 30, "duration": 3.0,
+                "layout": "2+1", "animation": "none", "sources": self.sources(3),
+                "title": {"text": "", "position": "lower_fifth"}, "overwrite": True,
+            }
+            with self.assertRaisesRegex(ValueError, "aliases source"):
+                mod.render(root, raw)
+
     def test_cross_skill_imports_fail_closed_in_all_entrypoints(self):
         module_file = getattr(mod, "__file__", None)
         assert module_file

@@ -121,6 +121,9 @@ def _verify_report_file_hashes(
         entry = files.get(report_key, {})
         expected = entry.get("sha256")
         path = paths[path_key]
+        expected_path = str(path.relative_to(validated["root"]))
+        if entry.get("path") != expected_path:
+            errors.append(f"aggregate report path mismatch for {path_key}")
         if not path.is_file():
             errors.append(f"missing {path_key} for aggregate hash check")
             continue
@@ -129,6 +132,25 @@ def _verify_report_file_hashes(
             continue
         if sha256_file(path) != expected:
             errors.append(f"aggregate report hash mismatch for {path_key}")
+    return errors
+
+
+def _verify_phase_identity(validated: dict, phase: dict, label: str, kind: str, state: str) -> list[str]:
+    errors: list[str] = []
+    if phase.get("kind") != kind:
+        errors.append(f"aggregate {label} phase kind mismatch")
+    if phase.get("state") != state:
+        errors.append(f"aggregate {label} phase state must be {state}")
+    if phase.get("story_id") != validated["story_id"]:
+        errors.append(f"aggregate {label} phase story_id mismatch")
+    if int(phase.get("revision", -1)) != validated["revision"]:
+        errors.append(f"aggregate {label} phase revision mismatch")
+    if int(phase.get("exact_pcm_frames", -1)) != validated["timeline"]["exact_pcm_frames"]:
+        errors.append(f"aggregate {label} phase exact_pcm_frames mismatch")
+    if int(phase.get("sample_rate_hz", -1)) != validated["timeline"]["sample_rate_hz"]:
+        errors.append(f"aggregate {label} phase sample_rate_hz mismatch")
+    if int(phase.get("channels", -1)) != 2:
+        errors.append(f"aggregate {label} phase channels mismatch")
     return errors
 
 
@@ -142,15 +164,26 @@ def _verify_aggregate_report(validated: dict, report: dict) -> list[str]:
     if int(report.get("revision", -1)) != validated["revision"]:
         errors.append("aggregate report revision mismatch")
     phases = report.get("phases", {})
+    if not isinstance(phases, dict):
+        errors.append("aggregate report phases must be an object")
+        return errors
     stems = phases.get("stems")
     source_mix = phases.get("source_mix")
-    if not isinstance(stems, dict) or stems.get("kind") != "story_soundtrack_stems":
+    if not isinstance(stems, dict):
         errors.append("aggregate report missing valid stems phase")
-    if not isinstance(source_mix, dict) or source_mix.get("kind") != "story_soundtrack_source_mix":
-        errors.append("aggregate report missing valid source_mix phase")
-    elif "source_padding" not in source_mix:
-        errors.append("aggregate source_mix missing source_padding report")
     else:
+        errors.extend(_verify_phase_identity(
+            validated, stems, "stems", "story_soundtrack_stems", "STEMS_RENDERED"
+        ))
+    if not isinstance(source_mix, dict):
+        errors.append("aggregate report missing valid source_mix phase")
+    else:
+        errors.extend(_verify_phase_identity(
+            validated, source_mix, "source_mix", "story_soundtrack_source_mix", "SOURCE_MIX_REVIEW"
+        ))
+    if isinstance(source_mix, dict) and "source_padding" not in source_mix:
+        errors.append("aggregate source_mix missing source_padding report")
+    elif isinstance(source_mix, dict):
         padding = source_mix.get("source_padding")
         if not isinstance(padding, list):
             errors.append("aggregate source_mix source_padding must be a list")

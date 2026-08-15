@@ -628,7 +628,8 @@ def publication_lock(path: Path):
 
 
 def publication_lock_path(record_path: Path, account_key: str | None, user_id: str, video_sha256: str) -> Path:
-    identity = f"{account_key or 'legacy-env'}\0{user_id}\0{video_sha256}".encode("utf-8")
+    del account_key  # local aliases are mutable; stable target identity is user_id
+    identity = f"{user_id}\0{video_sha256}".encode("utf-8")
     name = hashlib.sha256(identity).hexdigest() + ".lock"
     return record_path.parent / ".instagram-publish-locks" / name
 

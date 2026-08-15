@@ -1048,6 +1048,8 @@ def render(root: Path, raw: dict[str, Any]) -> dict[str, Any]:
     if output.exists() and not spec["overwrite"]:
         raise ValueError(f"output exists and overwrite=false: {output.relative_to(root)}")
     source_paths = [safe_path(root, src["path"], must_exist=True) for src in spec["sources"]]
+    if output in source_paths:
+        raise ValueError(f"output aliases source: {output.relative_to(root)}")
     title_text = str(spec["title"].get("text", "")).strip()
     layout, order = choose_layout(len(source_paths), spec["sources"], title_text, spec["layout"])
     ordered_sources = [spec["sources"][i] for i in order]

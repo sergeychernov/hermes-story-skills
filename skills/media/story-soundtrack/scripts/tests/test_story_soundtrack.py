@@ -39,6 +39,7 @@ from mix_story_audio import (  # noqa: E402
     read_pcm16_stereo,
     validate_approval_aac_raw_decode,
     _qa_check_encoded_master,
+    _load_stems_report,
     write_pcm16,
 )
 import approve_story_soundtrack as approve_module  # noqa: E402
@@ -510,6 +511,19 @@ class StorySoundtrackTests(unittest.TestCase):
     self.assertIn("phase_hashes", report)
     self.assertEqual(report["phases"]["stems"]["kind"], "story_soundtrack_stems")
     self.assertEqual(report["phases"]["source_mix"]["kind"], "story_soundtrack_source_mix")
+
+    report["phases"]["stems"]["story_id"] = "wrong-story"
+    report["phases"]["stems"]["state"] = "SOURCE_MIX_REVIEW"
+    report["phase_hashes"]["stems_sha256"] = __import__("hashlib").sha256(
+      json.dumps(report["phases"]["stems"], sort_keys=True).encode("utf-8")
+    ).hexdigest()
+    errors = _verify_aggregate_report(validated, report)
+    self.assertTrue(any("stems phase story_id mismatch" in error for error in errors))
+    self.assertTrue(any("stems phase state" in error for error in errors))
+    report["phases"]["stems"]["state"] = "STEMS_RENDERED"
+    write_json(validated["resolved_paths"]["report_json"], report)
+    with self.assertRaisesRegex(SystemExit, "stems phase story_id mismatch"):
+      _load_stems_report(validated)
 
   @unittest.skipUnless(FFMPEG_AVAILABLE, "ffmpeg required")
   def test_strict_approval_handoff_verification(self) -> None:

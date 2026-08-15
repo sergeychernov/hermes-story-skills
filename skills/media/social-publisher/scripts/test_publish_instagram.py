@@ -314,6 +314,14 @@ class InstagramValidationTests(unittest.TestCase):
             self.assertFalse(errors)
             self.assertEqual(state["max_active"], 1)
 
+    def test_publication_lock_identity_ignores_mutable_account_alias(self):
+        from publish_instagram import publication_lock_path
+
+        record = Path("/tmp/instagram-publish.json")
+        legacy = publication_lock_path(record, None, "stable-user-id", "video-sha")
+        registry = publication_lock_path(record, "renamed-account", "stable-user-id", "video-sha")
+        self.assertEqual(legacy, registry)
+
     def test_poll_status_handles_error_and_timeout(self):
         import publish_instagram
 

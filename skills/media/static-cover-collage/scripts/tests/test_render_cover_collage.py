@@ -8,6 +8,16 @@ def spec(overwrite=True):return {"schema_version":1,"output":"out/cover.jpg","wi
 def platform_spec(preset,width,height):
  x=spec();x["width"]=width;x["height"]=height;x["layout"]={"preset":preset};return x
 class Tests(unittest.TestCase):
+ def test_output_may_not_alias_collage_source_or_natural_background(self):
+  with tempfile.TemporaryDirectory() as td:
+   root=Path(td);(root/"img").mkdir();(root/"generated").mkdir()
+   for n in ("h.jpg","l.jpg","r.jpg"):Image.new("RGB",(20,20),"red").save(root/"img"/n)
+   x=spec(True);x["output"]="img/h.jpg"
+   with self.assertRaisesRegex(SpecError,"aliases source"):render_collage(root,x)
+   Image.new("RGB",(20,20),"blue").save(root/"generated/bg.png")
+   natural={"schema_version":1,"mode":"natural_composite","background":"generated/bg.png","output":"generated/bg.png","width":420,"height":654,"platform_preset":"instagram_reels_cover","focus_x":.5,"focus_y":.5,"text_anchor_x":.3,"text":{},"overwrite":True}
+   with self.assertRaisesRegex(SpecError,"aliases background"):render_natural_cover(root,natural)
+
  def test_paths(self):
   self.assertTrue(is_safe_relative_path("a/b.jpg"));self.assertFalse(is_safe_relative_path("../x"));self.assertFalse(is_safe_relative_path("/x"))
  def test_crop_deterministic(self):
