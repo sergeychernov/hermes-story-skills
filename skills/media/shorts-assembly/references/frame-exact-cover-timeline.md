@@ -1,6 +1,6 @@
 # Frame-exact cover-inclusive timeline
 
-Use for any publish candidate that prepends a YouTube/Telegram cover and then composes a score.
+Use for any publish candidate that prepends an approved platform cover to a visual timeline.
 
 ## Why this exists
 
@@ -19,7 +19,7 @@ Do not derive scene boundaries or score routing from legacy container durations.
 3. Trim real audio and generated silence to the exact `frame_count / 30` before `concat=v=1:a=1`. This removes only codec padding after the final visual frame; it is not an editorial speech trim.
 4. Add a cover by exact frame count (e.g. 24 frames at 30 fps = 0.8 s), not a floating `-t` alone.
 5. Build the cover plus story with one filter concat and one final encode. Do not use TS/MP4 stream-copy concat as a publish timeline.
-6. Use the resulting cover-inclusive MP4 as the source of truth for score length and voice/silent routing.
+6. Hand the resulting cover-inclusive MP4 and exact frame contract to `story-soundtrack`; it is the source of truth for soundtrack length and routing.
 
 ## Gates
 
@@ -29,6 +29,6 @@ Do not derive scene boundaries or score routing from legacy container durations.
 - full decode passes;
 - inspect exact frame indices, not input seeking. For a 24-frame cover, extract `n=0`, `n=23`, `n=24` with `select='eq(n,INDEX)'`. Input-side `-ss` can seek to a keyframe and falsely show the first live frame for a cover timestamp.
 
-## Whole-timeline score
+## Soundtrack handoff
 
-Compose after the final visual timeline passes these gates. The cover ident must be the opening phrase of the same stems, never an appended audio fragment followed by a delayed old mix. Shift every scene boundary from the frame-derived visual timeline and keep speech source plus rhythm/melody routing explicit.
+After the final visual timeline passes these gates, stop soundtrack work in `shorts-assembly`. `story-soundtrack` owns composition, routing, audio-only review and approval against this exact frame-derived timeline. Resume assembly only after receiving its hash-bound approved handoff.

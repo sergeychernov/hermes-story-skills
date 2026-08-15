@@ -39,7 +39,7 @@ class SoundtrackOwnershipTests(unittest.TestCase):
         shorts_skill = (SHORTS / "SKILL.md").read_text(encoding="utf-8")
         self.assertIn("references/subjective-soundtrack-diagnosis.md", soundtrack_skill)
         self.assertIn("version: 1.0.2", soundtrack_skill)
-        self.assertIn("version: 1.5.1", shorts_skill)
+        self.assertIn("version: 1.5.2", shorts_skill)
         self.assertIn("stop soundtrack work in this skill", shorts_skill)
         self.assertNotIn("Render generated accompaniment", shorts_skill)
         self.assertNotIn("Audio-only approval files", shorts_skill)
@@ -57,6 +57,26 @@ class SoundtrackOwnershipTests(unittest.TestCase):
         )
         for identifier in LEGACY_IDENTIFIERS:
             self.assertNotIn(identifier, active_text)
+
+    def test_cover_creation_and_timeline_insertion_have_distinct_owners(self):
+        old_reference = SHORTS / "references/youtube-cover-insertion.md"
+        insertion = SHORTS / "references/platform-cover-timeline-insertion.md"
+        frame_contract = SHORTS / "references/frame-exact-cover-timeline.md"
+        self.assertFalse(old_reference.exists())
+        self.assertTrue(insertion.is_file())
+
+        insertion_text = insertion.read_text(encoding="utf-8")
+        self.assertIn("approved static-cover-collage artifact", insertion_text)
+        self.assertNotIn("Build the cover as a standalone", insertion_text)
+        self.assertNotIn("compose/render one new soundtrack", insertion_text)
+
+        frame_text = frame_contract.read_text(encoding="utf-8")
+        self.assertIn("story-soundtrack", frame_text)
+        self.assertNotIn("Compose after the final visual timeline", frame_text)
+
+        static_skill = (ROOT / "skills/media/static-cover-collage/SKILL.md").read_text(encoding="utf-8")
+        self.assertIn("version: 1.3.1", static_skill)
+        self.assertIn("`static-cover-collage` ownership ends", static_skill)
 
 
 if __name__ == "__main__":

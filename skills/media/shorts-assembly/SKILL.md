@@ -1,7 +1,7 @@
 ---
 name: shorts-assembly
 description: Collect clips into titled 9:16 Shorts compilations.
-version: 1.5.1
+version: 1.5.2
 author: Hermes Agent
 license: MIT
 metadata:
@@ -388,8 +388,8 @@ On low-power systems, do **not** use MPEG-TS or direct-MP4 stream-copy concat fo
 ## References
 
 - `references/title-preflight-and-horizontal-stills.md` — explicit drawtext wrapping preflight and Sergey's no-blur/no-stretch/no-empty-band policy for horizontal stills.
-- `references/frame-exact-cover-timeline.md` — frame-authoritative assembly, AAC-padding trimming, exact cover-frame QA, and whole-timeline scoring.
-- `references/youtube-cover-insertion.md` — cover insertion approval and delivery checks.
+- `references/frame-exact-cover-timeline.md` — frame-authoritative assembly, AAC-padding trimming, exact cover-frame QA, and soundtrack handoff.
+- `references/platform-cover-timeline-insertion.md` — consume an approved platform cover, insert it frame-exactly, and verify the upload-candidate timeline.
 - `references/title-fit-editorial-and-rebuild-gates.md` — title-box fit, adjacent-title continuity, incidental-subject overlap policy, and proof that a corrected scene reached the rebuilt final film.
 - `references/youtube-title-safe-exact-15.md` — authoritative exact 28% rule, box-edge math, exception policy, media-fill separation, and verification gate.
 - `references/youtube-title-safe-exact-20.md` — historical filename retained for compatibility; current rule is exact 28%.

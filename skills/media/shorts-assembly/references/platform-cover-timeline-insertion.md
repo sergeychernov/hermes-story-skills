@@ -1,23 +1,23 @@
-# Cover approval and lossless insertion
+# Approved platform-cover timeline insertion
 
-Use this when inserting an approved cover/thumbnail into a vertical family film or Short before upload (YouTube Shorts, Telegram Stories, Instagram Reels).
+Use this when inserting an approved static-cover-collage artifact into a vertical family film or Short before upload (YouTube Shorts, Telegram Stories, Instagram Reels).
 
-## Approval sequence
+## Prerequisite handoff
 
-1. Build the cover as a standalone 1080×1920 JPEG from authentic user media. Keep text on a dedicated panel or another area that does not cover faces/action.
-2. Run literal typography and crop QA.
-3. Deliver the JPEG by itself and say explicitly that neither video insertion nor upload has occurred.
-4. Wait for explicit approval or a command such as «вставь в видео».
-5. Only then create a new upload-candidate MP4. Showing a cover is not permission to alter the approved master or publish it.
+`static-cover-collage` owns source selection, composition, typography/crop QA, platform dimensions, report hashes and per-platform image approval. This reference starts only after that skill has produced an approved hash-bound artifact.
+
+1. Verify the exact approved image hash and target platform from the cover report.
+2. Wait for a separate explicit insertion command such as «вставь в видео»; image approval alone does not authorize changing the video.
+3. Create a new upload-candidate MP4 without modifying the approved image pixels or the previous master.
 
 ## First-frame safeguard
 
 Two modes — pick based on how the platform shows previews:
 
-- **Intro mode** (YouTube-style): keep the approved cover visible from frame zero for about 0.5–0.8 s. Verify exact decoded frames at 0.000, 0.033, 0.100, 0.250, and 0.500 s; verify the transition to live video immediately after the cover interval. No first-frame fade from black. When the user wants a coherent soundtrack, do **not** glue a separate ident ahead of an already approved music mix: first form the normalized cover-inclusive video timeline, then compose/render one new soundtrack from its `t=0`. The cover motif must continue naturally into the story theme; preserve source speech and route the new music around it. Do not delegate the composition to a coding agent when the user explicitly requests direct authorship. A short separate ident is only a review asset until the user approves its character.
+- **Intro mode** (YouTube-style): keep the approved cover visible from frame zero for about 0.5–0.8 s. Verify exact decoded frames at 0.000, 0.033, 0.100, 0.250, and 0.500 s; verify the transition to live video immediately after the cover interval. No first-frame fade from black. If soundtrack timing changes, hand the normalized cover-inclusive frame contract to `story-soundtrack`; do not compose, prepend an ident or alter an approved mix here.
 
-  **Audio-first approval gate:** after the cover-inclusive visual timeline is frame-verified, render the complete speech-aware **audio-only** mix and deliver it for listening. Wait for explicit approval before muxing it into video, creating an upload MP4, or publishing. For a requested gain adjustment, rebuild and deliver only audio again; do not spend a video encode/mux cycle. Apply exact linear changes (e.g. `+20%` = current linear gain × `1.20`) and record the resulting dB. Independently measure the encoded AAC true peak with `ebur128`: AAC may overshoot a PCM limiter, so retain/rebuild with enough headroom until the delivered audio itself meets the peak ceiling.
-- **Single-frame mode** («обложка одним фреймом», Telegram/Instagram-style previews): the cover is exactly ONE video frame (1/fps s — e.g. 1/30 s at 30 fps), just so the platform picks it up as the preview. No intro music. Audio alignment: prepend exactly one frame of silence to the approved mix (`aevalsrc=0:0:d=0.033333:s=48000:c=stereo`, then concat) so every scene keeps its approved timing — never trim or re-time the approved mix. Verify frame 0 (t=0.000) is the full cover and frame 1 (t≈0.034 s) is already live footage.
+  **Audio-first approval gate:** `story-soundtrack` owns audio-only rendering, gain revisions, encoded AAC QA and approval. `shorts-assembly` waits for its new hash-bound handoff before muxing or publishing.
+- **Single-frame mode** («обложка одним фреймом», Telegram/Instagram-style previews): the cover is exactly ONE video frame (1/fps s — e.g. 1/30 s at 30 fps), just so the platform picks it up as the preview. Verify frame 0 (t=0.000) is the full cover and frame 1 (t≈0.034 s) is already live footage. If audio alignment requires one frame of leading silence, request a new approved soundtrack revision; never prepend or retime approved audio inside this skill.
 
 ## Fast insertion without re-encoding the whole film
 
