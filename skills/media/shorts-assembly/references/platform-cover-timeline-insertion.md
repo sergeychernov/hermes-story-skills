@@ -59,5 +59,5 @@ Pitfalls observed with copy concat:
 - **Frame-count identity**: `ffprobe -count_frames -show_entries stream=nb_read_frames` must equal master frames + inserted frames. Any mismatch means a frame was silently dropped — rebuild, do not deliver.
 - Full decode with `ffmpeg -v error -i upload-candidate.mp4 -f null -`. This is necessary but never substitutes for the packet-timeline gate.
 - Reject any output with non-monotonic DTS, implausible `r_frame_rate`, or decode errors.
-- Build a first-frame contact sheet covering the cover interval (intro mode: 0.000–0.750 s; single-frame mode: exactly 0.000 and ≈0.034 s) and inspect it visually.
+- Build a first-frame contact sheet for exact frames `0`, `1`, `2`, `3`, and `4`. Require frames `0..3` to show the same approved cover, require frame `4` to be live footage, and reject black/gray lead-in or any longer cover interval.
 - Recompute SHA-256 and create a fresh package verification record; inserting a cover changes the upload media hash.

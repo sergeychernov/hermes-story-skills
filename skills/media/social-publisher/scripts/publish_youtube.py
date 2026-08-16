@@ -306,6 +306,28 @@ def build_youtube_upload_url(parts: str, notify_subscribers: bool) -> str:
     })
 
 
+def validate_resumable_location(value: object) -> str:
+    if not isinstance(value, str) or not value:
+        raise ValueError("YouTube resumable response did not contain a Location URL")
+    parsed = urllib.parse.urlsplit(value)
+    if (
+        parsed.scheme != "https"
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.fragment
+        or parsed.port not in (None, 443)
+    ):
+        raise ValueError("unsafe YouTube resumable Location URL")
+    hostname = (parsed.hostname or "").lower()
+    if not (
+        hostname == "upload.youtube.com"
+        or hostname == "www.googleapis.com"
+        or hostname.endswith(".googleapis.com")
+    ):
+        raise ValueError("unexpected YouTube resumable Location host")
+    return value
+
+
 def file_sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
@@ -806,7 +828,7 @@ def main():
             headers,
             "POST",
         )
-        location = start.headers["Location"]
+        location = validate_resumable_location(start.headers["Location"])
         result = json.load(req(
             location,
             approved["video_bytes"],

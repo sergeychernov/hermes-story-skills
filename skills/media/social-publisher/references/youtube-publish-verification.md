@@ -17,7 +17,7 @@ Use this after the user has explicitly approved a YouTube publication. OAuth set
 
 List the registered targets, ask the user to choose one, record all decisions under `story.publication.targets.youtube`, complete `references/youtube-metadata-preflight.md`, and run `scripts/publish_youtube.py` exactly once with required `--story`, required `--metadata-preflight`, and `--approved`. Do not pass media or metadata as independent CLI parameters. The publisher validates the story against `youtube-publication.schema.json`, verifies the schema-bound manifest and selected OAuth channel before upload, and maps `contacts` → `private`, `everyone` → `public`, and `link` → `unlisted`.
 
-Immediately before `videos.insert`, the publisher creates a private immutable `youtube-upload-attempt-<identity>.json`. If session creation, media upload, or response parsing is ambiguous, it returns `do_not_retry=true` and leaves that journal in place. A repeated command for the same approved package is rejected. First resolve the attempt through YouTube API readback; never delete or bypass the journal merely to retry.
+Immediately before `videos.insert`, the publisher creates a private immutable `youtube-upload-attempt-<identity>.json` keyed by media SHA-256 and channel. If session creation, media upload, or response parsing is ambiguous, it returns `do_not_retry=true` and leaves that journal in place. A repeated command for the same media/channel is rejected even if metadata or the approval manifest changed. First resolve the attempt through YouTube API readback; never delete or bypass the journal merely to retry.
 
 ## Processing is part of completion
 

@@ -92,4 +92,4 @@ python3 <skill-dir>/scripts/publish_youtube.py \
   --approved
 ```
 
-`publish_youtube.py` revalidates schema, re-resolves paths, snapshots and rehashes every manifest artifact before OAuth, consumes those exact bytes, sends only officially writable fields, and reads extended metadata back after processing.
+`publish_youtube.py` revalidates schema, re-resolves paths, snapshots and rehashes every manifest artifact before OAuth, consumes those exact bytes, and independently decodes video frames `0..4` to enforce the exact four-frame opening contract instead of trusting report JSON alone. Immediately before `videos.insert` it writes a private immutable upload-attempt journal keyed by media SHA-256 and channel; that journal blocks blind retries even when metadata changes. It sends only officially writable fields and reads extended metadata back after processing.

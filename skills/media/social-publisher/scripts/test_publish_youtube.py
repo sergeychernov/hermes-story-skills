@@ -617,7 +617,7 @@ class YouTubePlaylistTests(unittest.TestCase):
             publish_youtube.api_json = original
 
     def test_upload_url_binds_notify_subscribers_decision(self):
-        from publish_youtube import build_youtube_upload_url
+        from publish_youtube import build_youtube_upload_url, validate_resumable_location
 
         quiet = build_youtube_upload_url("snippet,status", False)
         loud = build_youtube_upload_url("snippet,status,recordingDetails", True)
@@ -625,6 +625,24 @@ class YouTubePlaylistTests(unittest.TestCase):
         self.assertIn("part=snippet%2Cstatus", quiet)
         self.assertIn("notifySubscribers=true", loud)
         self.assertIn("recordingDetails", loud)
+        self.assertEqual(
+            validate_resumable_location("https://upload.youtube.com/resumable/session"),
+            "https://upload.youtube.com/resumable/session",
+        )
+        self.assertEqual(
+            validate_resumable_location("https://www.googleapis.com/upload/session"),
+            "https://www.googleapis.com/upload/session",
+        )
+        for unsafe in (
+            "http://upload.youtube.com/session",
+            "https://evil.example/session",
+            "https://upload.youtube.com.evil.example/session",
+            "https://user:secret@upload.youtube.com/session",
+            "https://upload.youtube.com:444/session",
+            "https://upload.youtube.com/session#fragment",
+        ):
+            with self.subTest(unsafe=unsafe), self.assertRaises(ValueError):
+                validate_resumable_location(unsafe)
 
     def test_api_metadata_uses_approved_preflight_decisions(self):
         from publish_youtube import build_youtube_api_metadata
@@ -805,8 +823,8 @@ class YouTubePlaylistTests(unittest.TestCase):
             if 'oauth2.googleapis.com/token' in url:
                 return mock.Mock(read=lambda: json.dumps({'access_token': 'tok'}).encode())
             if 'uploadType=resumable' in url:
-                return mock.Mock(headers={'Location': 'https://upload.example/resume'})
-            if url == 'https://upload.example/resume':
+                return mock.Mock(headers={'Location': 'https://upload.youtube.com/resume'})
+            if url == 'https://upload.youtube.com/resume':
                 return mock.Mock(read=lambda: json.dumps({'id': 'vid-abc'}).encode())
             if 'thumbnails/set' in url:
                 raise RuntimeError('thumbnail upload failed')

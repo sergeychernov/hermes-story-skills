@@ -34,7 +34,7 @@ The API publishing path requires the wide API thumbnail. Opening-frame and Short
 
 ## First-frame safeguard
 
-Before publication, decode and inspect the exact encoded frames at `0.000`, `0.033`, `0.10`, `0.25`, and `0.50` seconds. Never let a Short begin on black/gray/transparent video or a fade-in from blank: some Shorts clients may use or momentarily expose that first decoded frame as the grid cover/placeholder. Put the explicitly approved vertical cover into the video itself for roughly `0.5–0.8` seconds from frame zero, then transition quickly into the opening scene; apply any fade only between visible images, never from blank. Verify the first frame again on the final upload candidate. Changing encoded first frames of an already published Short requires a replacement upload and therefore fresh package/cover/publication approval.
+Before publication, decode and inspect exact encoded frames `0`, `1`, `2`, `3`, and `4`. Never let a Short begin on black/gray/transparent video or a fade-in from blank. For Sergey's YouTube Shorts publication path, frames `0..3` must be the same approved vertical safe-zone-compliant cover and frame `4` must be the first live frame; one-frame and longer cover intervals are invalid. The publisher rechecks this boundary from the immutable video snapshot before OAuth. Apply any fade only after frame `4` and never from blank. Changing encoded first frames of an already published Short requires a replacement upload and therefore fresh package/cover/publication approval.
 
 ## Upload pattern
 
