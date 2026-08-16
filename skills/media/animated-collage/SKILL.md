@@ -1,20 +1,20 @@
 ---
 name: animated-collage
 description: Use when rendering 2-6 photos as an animated collage.
-version: 1.5.3
+version: 1.6.0
 author: Sergey Chernov / Hermes Agent
 license: MIT
 metadata:
   hermes:
     tags: [collage, animation, ffmpeg, photos, vertical-video, qa]
-    related_skills: [story, photo-story-archive, still-image-animation]
+    related_skills: [story, photo-story-archive, still-image-animation, collage-layout-design]
 ---
 
 # Animated Collage
 
 ## Overview
 
-Turn **2-6 archived photos** into one deterministic, independently playable animated collage. The skill chooses a dense layout from subject geometry, chooses an entrance preset from narrative emphasis, performs focal crops, renders a lower-fifth title only over a declared safe panel, and emits an MP4, report, representative frames, final frame, and contact sheet.
+Turn **2-6 archived photos** into one deterministic, independently playable animated collage. The skill derives the displayed portrait/landscape sequence, resolves it through an executable layout catalog, chooses an entrance preset from narrative emphasis, performs focal crops, renders a lower-fifth title only over a declared safe panel, and emits an MP4, report, representative frames, final frame, and contact sheet.
 
 This is the reusable multi-image renderer missing between `story` and `still-image-animation`:
 
@@ -52,15 +52,35 @@ Completion criterion: every source exists under the chosen media root and every 
 
 ### 2. Choose layout
 
-Prefer `layout: auto`. The renderer uses source count and title-safe coverage:
+Prefer `layout: auto`. The renderer probes displayed source dimensions in source order (`p` when width `<` height, `l` when width `>=` height) and calls [`scripts/layout_selector.py`](scripts/layout_selector.py):
 
-| Photos | Auto layout | Reason |
-|---:|---|---|
-| 2 | `stack` | both images remain large; safe lower panel carries title |
-| 3 | `2+1` | two setup cards plus full-width title/payoff panel |
-| 4 | `2x2` when two safe bottom panels exist; otherwise `2+1+1` | avoids a title spanning a face |
-| 5 | `2+2+1` | learned safe default: people above, face-free full-width panel below |
-| 6 | `2x3` when two safe bottom panels exist; otherwise `2+2+1+1` | preserves a full-width title-safe ending when needed |
+```python
+select_layout("ppl")  # -> "2+1"
+```
+
+The selector is the canonical executable contract; source count alone never chooses a layout. Its production catalog initially contains only renderable geometry:
+
+| Orientation sequence | Canonical layout |
+|---|---|
+| `ll` | `stack` |
+| `ppl` | `2+1` |
+| `pppp` | `2x2` |
+| `ppll` | `2+1+1` |
+| `pplpp` | `2+1+2` |
+| `ppppl` | `2+2+1` |
+| `pppppp` | user choice: `portrait-pairs-descending`, `portrait-pairs-ascending`, `portrait-triples-descending`, or `portrait-triples-ascending` |
+| `ppppll` | `2+2+1+1` |
+
+Selection outcomes are explicit:
+
+- one match: return its canonical layout ID;
+- multiple matches: raise `AmbiguousLayoutSequenceError` with ordered candidate IDs; show those choices to the user and call `select_layout(sequence, requested=id)` after selection;
+- no match: raise `UnsupportedLayoutSequenceError` with the unchanged sequence; only then load `collage-layout-design` for interactive design or an approved scene split;
+- invalid symbols: reject the sequence before catalog lookup.
+
+For example, `ppllppl` is a valid orientation string but currently has no catalog entry, so it produces `UnsupportedLayoutSequenceError` rather than a count-based fallback. The renderer's current 2–6 source limit is a separate concern handled by `collage-layout-design`; the selector itself does not reject a valid sequence merely because of its length.
+
+When several layouts share a sequence—for example pair-grouped versus triple-grouped or ascending versus descending portrait cascades—the agent must present their labels and wait for a user choice. Never choose the first candidate silently. Preserve source order: the orientation sequence and the rendered panel order are the same. If a title is present, explain candidate viability before asking: pair-grouped portrait layouts require the existing final two sources to be `title_safe`; triple-grouped layouts require the existing final three. Do not move safe sources to manufacture compatibility.
 
 Explicit presets also include `2+1+2` for a deliberately large middle landscape and `2+2+1` for a large final detail. Use `overlap_stack` for 3-6 photos when each image should stay large and cascade with intentional overlap while preserving mixed portrait/landscape base cells. Manual layout selection is editorial control, not a workaround for missing `title_safe` metadata.
 
@@ -100,11 +120,12 @@ Use `animation: auto` unless the beat requires a specific rhythm:
 | Preset | Use when | Behavior |
 |---|---|---|
 | `row_reveal` | balanced place/people montage | rows enter in sequence; paired cards arrive from opposite sides |
+| `row_reveal_ascending` | bottom-up portrait grouping | lower groups enter first, then reveal upward |
 | `hero_last` | reveal, payoff, before/after, setup/result | supporting cards arrive first; final full-width/hero panel arrives last from below |
 | `fly_in` | energetic chronological set | every panel has its own staggered entrance |
 | `none` | deliberate static card | no panel movement; still gets technical QA |
 
-`auto` chooses `hero_last` for two/three images or when any source is marked `hero`; grid-like layouts choose `row_reveal`; other layouts choose `fly_in`.
+`auto` chooses `hero_last` for two/three images or when any source is marked `hero`; descending grid-like layouts choose `row_reveal`; ascending portrait layouts choose `row_reveal_ascending`; other layouts choose `fly_in`.
 
 Motion must match visible direction when direction itself matters. A duck, vehicle, gaze, or walking subject should enter head-first. The generic presets handle panels, not semantic object tracking; use an explicit effect when a single moving card needs a custom direction.
 
@@ -176,7 +197,7 @@ Record output path, hash, source order, selected layout and animation, QA frame 
 ## Common pitfalls
 
 1. **Equal grid first, subjects second.** This produces clipped faces and unreadable details. Inspect anchors before choosing cells.
-2. **Title across two unsafe bottom cells.** Mark safe sources and let auto switch to a full-width bottom panel.
+2. **Title over unsafe final cells.** `title_safe` is validation metadata, not a layout-switch or reorder instruction. Preserve source order; choose an existing layout whose final title-zone panels are already safe, or invoke `collage-layout-design`.
 3. **Center crop everywhere.** Supply focal coordinates for every non-central subject.
 4. **Panels still moving at the end.** Keep `entry_seconds <= duration - 1`; Sergey's Story default is `2 + 3` seconds.
 5. **Decorative blurred background.** It hides weak geometry. Use a darkened source crop only behind moving panels; completed panels must cover the canvas.

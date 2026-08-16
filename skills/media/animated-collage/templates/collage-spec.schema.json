@@ -41,7 +41,10 @@
         "2+1+1",
         "2+1+2",
         "2+2+1",
-        "2x3",
+        "portrait-pairs-descending",
+        "portrait-pairs-ascending",
+        "portrait-triples-descending",
+        "portrait-triples-ascending",
         "2+2+1+1",
         "overlap_stack"
       ],
@@ -63,7 +66,6 @@
         "2+1+1",
         "2+1+2",
         "2+2+1",
-        "2x3",
         "2+2+1+1",
         "custom"
       ],
@@ -127,7 +129,7 @@
       "type": "integer",
       "description": "Deterministic RNG seed for per-panel signed start angles. Required when rotation_enabled is true."
     },
-    "animation": {"enum": ["auto", "fly_in", "row_reveal", "hero_last", "none"], "default": "auto"},
+    "animation": {"enum": ["auto", "fly_in", "row_reveal", "row_reveal_ascending", "hero_last", "none"], "default": "auto"},
     "gutter": {"type": "integer", "minimum": 0, "maximum": 24, "default": 6},
     "title": {
       "oneOf": [

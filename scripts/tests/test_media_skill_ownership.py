@@ -10,9 +10,27 @@ SHORTS = MEDIA / "shorts-assembly"
 SOUNDTRACK = MEDIA / "story-soundtrack"
 STATIC_COVER = MEDIA / "static-cover-collage"
 STORY = MEDIA / "story"
+ANIMATED_COLLAGE = MEDIA / "animated-collage"
+COLLAGE_LAYOUT_DESIGN = MEDIA / "collage-layout-design"
 
 
 class MediaSkillOwnershipTests(unittest.TestCase):
+    def test_collage_layout_selection_and_exceptional_design_have_distinct_owners(self):
+        selector = ANIMATED_COLLAGE / "scripts/layout_selector.py"
+        design_skill = COLLAGE_LAYOUT_DESIGN / "SKILL.md"
+        self.assertTrue(selector.is_file())
+        self.assertTrue(design_skill.is_file())
+
+        animated_text = (ANIMATED_COLLAGE / "SKILL.md").read_text(encoding="utf-8")
+        self.assertIn("UnsupportedLayoutSequenceError", animated_text)
+        self.assertIn("only then load `collage-layout-design`", animated_text)
+        self.assertIn("AmbiguousLayoutSequenceError", animated_text)
+
+        design_text = design_skill.read_text(encoding="utf-8")
+        self.assertIn("Do not use when:", design_text)
+        self.assertIn("`AmbiguousLayoutSequenceError` supplied candidates", design_text)
+        self.assertIn("Do not add a selector entry whose layout ID cannot actually be rendered", design_text)
+
     def test_soundtrack_policy_has_one_canonical_owner(self):
         diagnosis = SOUNDTRACK / "references/subjective-soundtrack-diagnosis.md"
         self.assertTrue(diagnosis.is_file())

@@ -71,28 +71,135 @@ class LayoutTests(unittest.TestCase):
     def sources(self, n: int, safe: tuple[int, ...] = ()):
         return [{"path": f"photos/{i}.jpg", "title_safe": i in safe} for i in range(n)]
 
+    def test_actual_source_files_produce_orientation_sequence(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            portrait = root / "portrait.png"
+            landscape = root / "landscape.png"
+            for path, size in ((portrait, "600x800"), (landscape, "800x600")):
+                subprocess.run(
+                    [
+                        "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+                        "-f", "lavfi", "-i", f"color=c=white:s={size}:d=0.1",
+                        "-frames:v", "1", "-update", "1", str(path),
+                    ],
+                    check=True,
+                )
+            self.assertEqual(mod.source_orientation_sequence([portrait, landscape]), "pl")
+
+    def test_auto_layout_uses_orientation_sequence_instead_of_count_only(self):
+        name, order = mod.choose_layout(
+            4,
+            self.sources(4),
+            "",
+            "auto",
+            orientation_sequence="ppll",
+        )
+        self.assertEqual(name, "2+1+1")
+        self.assertEqual(order, [0, 1, 2, 3])
+
+    def test_explicit_layout_must_match_orientation_sequence(self):
+        with self.assertRaises(mod.IncompatibleLayoutSequenceError):
+            mod.choose_layout(
+                4,
+                self.sources(4),
+                "",
+                "2x2",
+                orientation_sequence="ppll",
+            )
+
+    def test_auto_layout_propagates_no_match_for_interactive_design_routing(self):
+        with self.assertRaises(mod.UnsupportedLayoutSequenceError) as caught:
+            mod.choose_layout(
+                4,
+                self.sources(4),
+                "",
+                "auto",
+                orientation_sequence="plpl",
+            )
+        self.assertEqual(caught.exception.sequence, "plpl")
+
     def test_five_images_choose_people_safe_2_plus_2_plus_1(self):
-        name, order = mod.choose_layout(5, self.sources(5, (2,)), "Title", "auto")
+        name, order = mod.choose_layout(
+            5,
+            self.sources(5, (4,)),
+            "Title",
+            "auto",
+            orientation_sequence="ppppl",
+        )
         self.assertEqual(name, "2+2+1")
-        self.assertEqual(order[-1], 2)
+        self.assertEqual(order, list(range(5)))
 
-    def test_six_images_with_one_safe_source_uses_full_width_bottom(self):
-        name, order = mod.choose_layout(6, self.sources(6, (1,)), "Title", "auto")
+    def test_six_portrait_candidates_have_executable_grouping_geometry(self):
+        expected_rows = {
+            "portrait-pairs-descending": [2, 2, 2],
+            "portrait-pairs-ascending": [2, 2, 2],
+            "portrait-triples-descending": [3, 3],
+            "portrait-triples-ascending": [3, 3],
+        }
+        for layout_id, row_sizes in expected_rows.items():
+            with self.subTest(layout_id=layout_id):
+                rows = mod._rows_for_layout(layout_id, 1080, 1920)
+                self.assertEqual([len(row) for row in rows], row_sizes)
+                mod.validate_layout_geometry([cell for row in rows for cell in row], 1080, 1920)
+                name, _ = mod.choose_layout(
+                    6,
+                    self.sources(6),
+                    "",
+                    layout_id,
+                    orientation_sequence="pppppp",
+                )
+                self.assertEqual(name, layout_id)
+
+    def test_ascending_portrait_layout_reveals_bottom_row_first(self):
+        rows = mod._rows_for_layout("portrait-pairs-ascending", 1080, 1920)
+        animation = mod.choose_animation("auto", "portrait-pairs-ascending", self.sources(6))
+        self.assertEqual(animation, "row_reveal_ascending")
+        schedule = mod.entry_schedule(rows, animation, 2.0)
+        starts = [entry[0] for entry in schedule]
+        self.assertGreater(starts[0], starts[-1])
+
+    def test_six_images_require_the_existing_bottom_source_to_be_title_safe(self):
+        name, order = mod.choose_layout(
+            6, self.sources(6, (5,)), "Title", "auto", orientation_sequence="ppppll"
+        )
         self.assertEqual(name, "2+2+1+1")
-        self.assertEqual(order[-1], 1)
+        self.assertEqual(order, list(range(6)))
 
-    def test_six_images_with_two_safe_sources_choose_grid(self):
-        name, order = mod.choose_layout(6, self.sources(6, (1, 4)), "Title", "auto")
-        self.assertEqual(name, "2x3")
-        self.assertEqual(order[-2:], [1, 4])
+    def test_title_safe_marker_elsewhere_does_not_reorder_sources(self):
+        with self.assertRaisesRegex(ValueError, "existing bottom row"):
+            mod.choose_layout(
+                6, self.sources(6, (1,)), "Title", "auto", orientation_sequence="ppppll"
+            )
+
+    def test_six_portraits_require_choice_then_preserve_title_safe_order(self):
+        with self.assertRaises(mod.AmbiguousLayoutSequenceError):
+            mod.choose_layout(
+                6, self.sources(6, (4, 5)), "Title", "auto", orientation_sequence="pppppp"
+            )
+        name, order = mod.choose_layout(
+            6,
+            self.sources(6, (4, 5)),
+            "Title",
+            "portrait-pairs-descending",
+            orientation_sequence="pppppp",
+        )
+        self.assertEqual(name, "portrait-pairs-descending")
+        self.assertEqual(order, list(range(6)))
 
     def test_title_without_safe_source_fails(self):
         with self.assertRaisesRegex(ValueError, "title_safe"):
-            mod.choose_layout(5, self.sources(5), "Title", "auto")
+            mod.choose_layout(5, self.sources(5), "Title", "auto", orientation_sequence="ppppl")
 
     def test_auto_animation_hero_last(self):
         selected = mod.choose_animation("auto", "2+2+1", [{}, {"hero": True}])
         self.assertEqual(selected, "hero_last")
+
+    def test_explicit_ascending_layout_direction_wins_over_hero_metadata(self):
+        selected = mod.choose_animation(
+            "auto", "portrait-pairs-ascending", [{}, {"hero": True}, {}, {}, {}, {}]
+        )
+        self.assertEqual(selected, "row_reveal_ascending")
 
     def test_title_wrap(self):
         self.assertEqual(mod.wrap_title("Опять мимо Запретного города", 15), "Опять мимо\nЗапретного\nгорода")
@@ -385,10 +492,10 @@ class OverlapStackTests(unittest.TestCase):
         normalized = mod.validate_spec(spec)
         self.assertEqual(normalized["entry_seconds"], 2.0)
 
-    def test_choose_overlap_stack_moves_title_safe_to_top(self):
-        name, order = mod.choose_layout(5, self.sources(5, (3,)), "Title", "overlap_stack")
+    def test_choose_overlap_stack_preserves_source_order(self):
+        name, order = mod.choose_layout(5, self.sources(5, (4,)), "Title", "overlap_stack")
         self.assertEqual(name, "overlap_stack")
-        self.assertEqual(order[-1], 3)
+        self.assertEqual(order, list(range(5)))
 
     def test_overlap_stack_three_sources_is_supported(self):
         name, _ = mod.choose_layout(3, self.sources(3), "", "overlap_stack")
@@ -625,9 +732,15 @@ class OverlapStackTests(unittest.TestCase):
 
 
 class EntranceGatingTests(unittest.TestCase):
+    def test_first_entered_source_index_follows_schedule_not_panel_order(self):
+        descending = [(0.0, 0.5, "left"), (0.0, 0.5, "right"), (0.8, 1.3, "left")]
+        ascending = [(0.8, 1.3, "left"), (0.8, 1.3, "right"), (0.0, 0.5, "left")]
+        self.assertEqual(mod.first_entered_source_index(descending), 0)
+        self.assertEqual(mod.first_entered_source_index(ascending), 2)
+
     def test_renderer_background_uses_first_entered_source(self):
         source = MODULE_PATH.read_text(encoding="utf-8")
-        self.assertIn("bg_index = 0", source)
+        self.assertIn("bg_index = first_entered_source_index(schedule)", source)
         self.assertNotIn("if src.get(\"title_safe\")", source[source.find("bg_index"):source.find("cards: list")])
 
     def _four_panel_rotation_setup(self) -> tuple[list, list, list[dict[str, Any]]]:
@@ -700,11 +813,11 @@ class IntegrationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             (root / "photos").mkdir()
-            colors = ["red", "green", "blue"]
-            for i, color in enumerate(colors):
+            colors_and_sizes = [("red", "600x800"), ("green", "600x800"), ("blue", "800x600")]
+            for i, (color, size) in enumerate(colors_and_sizes):
                 subprocess.run([
                     "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
-                    "-f", "lavfi", "-i", f"color=c={color}:s=800x600:d=0.1",
+                    "-f", "lavfi", "-i", f"color=c={color}:s={size}:d=0.1",
                     "-frames:v", "1", "-update", "1", str(root / "photos" / f"{i}.png")
                 ], check=True)
             spec = {
@@ -727,10 +840,11 @@ class IntegrationTests(unittest.TestCase):
             self.assertEqual(report["status"], "ok")
             self.assertEqual((report["width"], report["height"]), (360, 640))
             self.assertEqual(report["layout_selected"], "2+1")
+            self.assertEqual(report["orientation_sequence"], "ppl")
             self.assertEqual(report["animation_selected"], "hero_last")
             self.assertTrue(report["decodable"])
             self.assertTrue(report["motion_detected"])
-            self.assertEqual(report["renderer_version"], "1.5.0")
+            self.assertEqual(report["renderer_version"], "1.6.0")
             self.assertEqual(report["pixel_format"], "yuv420p")
             self.assertEqual(len(report["source_hashes"]), 3)
             self.assertEqual(len(report["panels"]), 3)
@@ -741,6 +855,44 @@ class IntegrationTests(unittest.TestCase):
             self.assertEqual(len(report["qa_frames"]), 3)
             saved = json.loads((root / "exports/test-report.json").read_text())
             self.assertEqual(saved["sha256"], report["sha256"])
+
+    def test_real_six_portrait_explicit_candidate_render(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "photos").mkdir()
+            colors = ["red", "green", "blue", "yellow", "magenta", "cyan"]
+            for i, color in enumerate(colors):
+                subprocess.run(
+                    [
+                        "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+                        "-f", "lavfi", "-i", f"color=c={color}:s=300x500:d=0.1",
+                        "-frames:v", "1", "-update", "1", str(root / "photos" / f"{i}.png"),
+                    ],
+                    check=True,
+                )
+            report = mod.render(
+                root,
+                {
+                    "schema_version": 1,
+                    "sources": [{"path": f"photos/{i}.png"} for i in range(6)],
+                    "output": "exports/six-portraits.mp4",
+                    "layout": "portrait-triples-ascending",
+                    "width": 360,
+                    "height": 640,
+                    "fps": 10,
+                    "duration": 2.0,
+                    "entry_seconds": 0.8,
+                    "gutter": 2,
+                },
+            )
+            self.assertEqual(report["orientation_sequence"], "pppppp")
+            self.assertEqual(report["layout_selected"], "portrait-triples-ascending")
+            self.assertEqual(report["animation_selected"], "row_reveal_ascending")
+            self.assertEqual(len(report["panels"]), 6)
+            top_starts = [panel["entrance"]["start"] for panel in report["panels"][:3]]
+            bottom_starts = [panel["entrance"]["start"] for panel in report["panels"][3:]]
+            self.assertGreater(min(top_starts), max(bottom_starts))
+            self.assertTrue((root / report["output"]).is_file())
 
     def test_real_overlap_stack_render(self):
         with tempfile.TemporaryDirectory() as tmp:

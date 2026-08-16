@@ -13,6 +13,16 @@ import sys
 import tempfile
 from pathlib import Path
 
+SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+import layout_selector as _layout_selector
+from layout_selector import (
+    AmbiguousLayoutSequenceError,
+    IncompatibleLayoutSequenceError,
+    UnsupportedLayoutSequenceError,
+)
+
 SHORTS_SCRIPTS = Path(__file__).resolve().parents[2] / "shorts-assembly" / "scripts"
 for _module_file in ("youtube_safe_title.py", "brand_title_style.py"):
     if not (SHORTS_SCRIPTS / _module_file).is_file():
@@ -46,12 +56,23 @@ LAYOUTS = {
     "2+1+1",
     "2+1+2",
     "2+2+1",
-    "2x3",
+    "portrait-pairs-descending",
+    "portrait-pairs-ascending",
+    "portrait-triples-descending",
+    "portrait-triples-ascending",
     "2+2+1+1",
     "overlap_stack",
 }
-BASE_LAYOUTS = LAYOUTS - {"auto", "overlap_stack"}
-ANIMATIONS = {"auto", "fly_in", "row_reveal", "hero_last", "none"}
+BASE_LAYOUTS = {
+    "stack",
+    "2+1",
+    "2x2",
+    "2+1+1",
+    "2+1+2",
+    "2+2+1",
+    "2+2+1+1",
+}
+ANIMATIONS = {"auto", "fly_in", "row_reveal", "row_reveal_ascending", "hero_last", "none"}
 OVERLAP_RATIO_MIN = 0.30
 OVERLAP_RATIO_MAX = 0.50
 OVERLAP_RATIO_DEFAULT = 0.40
@@ -60,7 +81,7 @@ ROTATION_MAX_DEG_DEFAULT = 45.0
 ROTATION_ABSOLUTE_MAX_DEG = 60.0
 FINAL_ROTATION_MAX_DEG_DEFAULT = 0.0
 FINAL_ROTATION_MAX_DEG_LIMIT = 10.0
-RENDERER_VERSION = "1.5.0"
+RENDERER_VERSION = "1.6.0"
 
 
 def run(cmd: list[str], *, capture: bool = False) -> str:
@@ -76,6 +97,44 @@ def sha256(path: Path) -> str:
         for chunk in iter(lambda: f.read(1024 * 1024), b""):
             h.update(chunk)
     return h.hexdigest()
+
+
+def source_display_size(path: Path) -> tuple[int, int]:
+    probe = json.loads(
+        run(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-select_streams",
+                "v:0",
+                "-show_entries",
+                "stream=width,height:stream_tags=rotate:stream_side_data=rotation",
+                "-of",
+                "json",
+                str(path),
+            ],
+            capture=True,
+        )
+    )
+    streams = probe.get("streams", [])
+    if not streams:
+        raise ValueError(f"source has no visual stream: {path}")
+    stream = streams[0]
+    width, height = int(stream["width"]), int(stream["height"])
+    rotation = int(float(stream.get("tags", {}).get("rotate", 0)))
+    for side_data in stream.get("side_data_list", []):
+        if "rotation" in side_data:
+            rotation = int(float(side_data["rotation"]))
+    return (height, width) if abs(rotation) % 180 == 90 else (width, height)
+
+
+def source_orientation_sequence(paths: list[Path]) -> str:
+    orientations: list[str] = []
+    for path in paths:
+        width, height = source_display_size(path)
+        orientations.append("l" if width >= height else "p")
+    return "".join(orientations)
 
 
 def write_paper_edge_mask(
@@ -224,10 +283,23 @@ def _rows_for_layout(name: str, width: int, height: int) -> list[list[tuple[int,
         h2 = round(height * 660 / 1920)
         h3 = height - h1 - h2
         return [[(0, 0, half, h1), (half, 0, other, h1)], [(0, h1, half, h2), (half, h1, other, h2)], [(0, h1 + h2, width, h3)]]
-    if name == "2x3":
+    if name in {"portrait-pairs-descending", "portrait-pairs-ascending"}:
         y1 = height // 3
         y2 = 2 * height // 3
         return [[(0, 0, half, y1), (half, 0, other, y1)], [(0, y1, half, y2 - y1), (half, y1, other, y2 - y1)], [(0, y2, half, height - y2), (half, y2, other, height - y2)]]
+    if name in {"portrait-triples-descending", "portrait-triples-ascending"}:
+        x1 = width // 3
+        x2 = 2 * width // 3
+        h1 = height // 2
+        widths = (x1, x2 - x1, width - x2)
+        return [
+            [(0, 0, widths[0], h1), (x1, 0, widths[1], h1), (x2, 0, widths[2], h1)],
+            [
+                (0, h1, widths[0], height - h1),
+                (x1, h1, widths[1], height - h1),
+                (x2, h1, widths[2], height - h1),
+            ],
+        ]
     if name == "2+2+1+1":
         ys = [round(i * height / 4) for i in range(5)]
         return [[(0, ys[0], half, ys[1] - ys[0]), (half, ys[0], other, ys[1] - ys[0])], [(0, ys[1], half, ys[2] - ys[1]), (half, ys[1], other, ys[2] - ys[1])], [(0, ys[2], width, ys[3] - ys[2])], [(0, ys[3], width, ys[4] - ys[3])]]
@@ -588,7 +660,14 @@ def validate_overlap_stack_geometry(
     }
 
 
-def choose_layout(count: int, sources: list[dict[str, Any]], title: str, requested: str) -> tuple[str, list[int]]:
+def choose_layout(
+    count: int,
+    sources: list[dict[str, Any]],
+    title: str,
+    requested: str,
+    *,
+    orientation_sequence: str | None = None,
+) -> tuple[str, list[int]]:
     if not 2 <= count <= 6:
         raise ValueError("animated-collage supports 2-6 sources; split larger sets into two scenes")
     safe = [i for i, src in enumerate(sources) if bool(src.get("title_safe"))]
@@ -597,17 +676,14 @@ def choose_layout(count: int, sources: list[dict[str, Any]], title: str, request
             raise ValueError("overlap_stack supports 3-6 sources")
         name = "overlap_stack"
     elif requested != "auto":
-        name = requested
-    elif count == 2:
-        name = "stack"
-    elif count == 3:
-        name = "2+1"
-    elif count == 4:
-        name = "2x2" if (not title or len(safe) >= 2) else "2+1+1"
-    elif count == 5:
-        name = "2+2+1"
+        if orientation_sequence is None:
+            name = requested
+        else:
+            name = _layout_selector.select_layout(orientation_sequence, requested=requested)
     else:
-        name = "2x3" if (not title or len(safe) >= 2) else "2+2+1+1"
+        if orientation_sequence is None:
+            raise ValueError("layout auto requires an orientation_sequence")
+        name = _layout_selector.select_layout(orientation_sequence)
     if name == "overlap_stack":
         expected = count
     else:
@@ -616,26 +692,37 @@ def choose_layout(count: int, sources: list[dict[str, Any]], title: str, request
         raise ValueError(f"layout {name} expects {expected} sources, got {count}")
     order = list(range(count))
     if title:
-        if not safe:
-            raise ValueError("title requires at least one source with title_safe=true")
         if name == "overlap_stack":
-            order = [i for i in order if i not in safe] + safe
+            if count - 1 not in safe:
+                raise ValueError(
+                    "overlap_stack title requires the existing final source to have title_safe=true; sources are not reordered"
+                )
         else:
             last_cells = len(_rows_for_layout(name, 1080, 1920)[-1])
-            need = last_cells
-            if len(safe) < need:
-                raise ValueError(f"layout {name} needs {need} title_safe source(s) in its bottom row; got {len(safe)}")
-            bottom = safe[-need:]
-            order = [i for i in order if i not in bottom] + bottom
+            bottom = set(range(count - last_cells, count))
+            unsafe_bottom = sorted(bottom - set(safe))
+            if unsafe_bottom:
+                raise ValueError(
+                    f"layout {name} needs title_safe=true on every source already in its existing bottom row; "
+                    f"unsafe source indices: {unsafe_bottom}; sources are not reordered"
+                )
     return name, order
 
 
 def choose_animation(requested: str, layout: str, sources: list[dict[str, Any]]) -> str:
     if requested != "auto":
         return requested
+    if layout in {"portrait-pairs-ascending", "portrait-triples-ascending"}:
+        return "row_reveal_ascending"
     if any(bool(s.get("hero")) for s in sources) or layout in {"stack", "2+1"}:
         return "hero_last"
-    if layout in {"2x2", "2x3", "2+2+1", "2+2+1+1"}:
+    if layout in {
+        "2x2",
+        "2+2+1",
+        "2+2+1+1",
+        "portrait-pairs-descending",
+        "portrait-triples-descending",
+    }:
         return "row_reveal"
     if layout == "overlap_stack":
         return "fly_in"
@@ -665,10 +752,11 @@ def entry_schedule(rows: list[list[tuple[int, int, int, int]]], animation: str, 
     schedule: list[tuple[float, float, str]] = []
     if animation == "none":
         return [(0.0, 0.0, "none") for _ in cells]
-    if animation == "row_reveal":
+    if animation in {"row_reveal", "row_reveal_ascending"}:
         row_count = len(rows)
         for row_index, row in enumerate(rows):
-            start = 0.0 if row_count == 1 else row_index * max(0.0, entry_seconds - travel) / (row_count - 1)
+            reveal_index = row_count - 1 - row_index if animation == "row_reveal_ascending" else row_index
+            start = 0.0 if row_count == 1 else reveal_index * max(0.0, entry_seconds - travel) / (row_count - 1)
             for col, _ in enumerate(row):
                 direction = "bottom" if len(row) == 1 else ("left" if col % 2 == 0 else "right")
                 schedule.append((start, min(entry_seconds, start + travel), direction))
@@ -690,6 +778,13 @@ def entry_schedule(rows: list[list[tuple[int, int, int, int]]], animation: str, 
         direction = "bottom" if cell[2] == max(c[2] for c in cells) and i == n - 1 else ("left" if i % 2 == 0 else "right")
         schedule.append((start, min(entry_seconds, start + travel), direction))
     return schedule
+
+
+def first_entered_source_index(schedule: list[tuple[float, float, str]]) -> int:
+    """Return the stable first panel among those with the earliest entrance start."""
+    if not schedule:
+        raise ValueError("entry schedule cannot be empty")
+    return min(range(len(schedule)), key=lambda index: (schedule[index][0], index))
 
 
 def rotation_canvas_size(width: int, height: int, angle_deg: float) -> tuple[int, int]:
@@ -1057,8 +1152,15 @@ def render(root: Path, raw: dict[str, Any]) -> dict[str, Any]:
             aliases = aliases or os.path.samefile(report_path, source_path)
         if aliases:
             raise ValueError(f"report aliases source: {source_path.relative_to(root)}")
+    orientation_sequence = source_orientation_sequence(source_paths)
     title_text = str(spec["title"].get("text", "")).strip()
-    layout, order = choose_layout(len(source_paths), spec["sources"], title_text, spec["layout"])
+    layout, order = choose_layout(
+        len(source_paths),
+        spec["sources"],
+        title_text,
+        spec["layout"],
+        orientation_sequence=orientation_sequence,
+    )
     ordered_sources = [spec["sources"][i] for i in order]
     ordered_paths = [source_paths[i] for i in order]
     overlap_meta: dict[str, Any] | None = None
@@ -1128,7 +1230,7 @@ def render(root: Path, raw: dict[str, Any]) -> dict[str, Any]:
 
     # The background may only reveal content that has already entered. Using a later
     # title-safe source here leaks a future card before its scheduled entrance.
-    bg_index = 0
+    bg_index = first_entered_source_index(schedule)
     bg_src = ordered_sources[bg_index]
     bg = work / "background.jpg"
     bg_filter = (
@@ -1299,6 +1401,7 @@ def render(root: Path, raw: dict[str, Any]) -> dict[str, Any]:
         "audio": False,
         "layout_requested": spec["layout"],
         "layout_selected": layout,
+        "orientation_sequence": orientation_sequence,
         "base_layout": spec.get("base_layout"),
         "animation_requested": spec["animation"],
         "animation_selected": animation,

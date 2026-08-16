@@ -54,6 +54,7 @@ The expected skills are:
 - `photo-story-archive`
 - `still-image-animation`
 - `animated-collage`
+- `collage-layout-design` — loaded only when no existing collage layout matches the source orientation sequence
 - `scene-group`
 - `media-voiceover`
 - `static-cover-collage`
