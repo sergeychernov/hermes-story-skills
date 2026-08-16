@@ -18,10 +18,15 @@ from still_image_animation import (
     _pan_crop_x_expr,
     _pan_progress_value,
     _zoompan_filter,
+    LOWER_FIFTH_Y,
 )
 
 
 class SpecTests(unittest.TestCase):
+    def test_default_title_band_keeps_bottom_youtube_ui_clear(self):
+        self.assertEqual("h*0.72-text_h-24", LOWER_FIFTH_Y)
+        self.assertNotIn("h*0.27", LOWER_FIFTH_Y)
+
     def test_normalizes_focus_and_defaults(self):
         spec = normalize_spec({
             "schema_version": 1,
@@ -37,6 +42,34 @@ class SpecTests(unittest.TestCase):
         self.assertTrue(spec["fade_in"])
         self.assertTrue(spec["fade_out"])
         self.assertEqual(spec["pan_easing"], "focus_dwell")
+        self.assertEqual(spec["title_position"], "lower_fifth")
+
+    def test_accepts_bottom_title_position(self):
+        spec = normalize_spec({
+            "schema_version": 1,
+            "source": "input.ppm",
+            "output": "scene.mp4",
+            "title_position": "bottom",
+        })
+        self.assertEqual(spec["title_position"], "bottom")
+
+    def test_accepts_middle_title_position(self):
+        spec = normalize_spec({
+            "schema_version": 1,
+            "source": "input.ppm",
+            "output": "scene.mp4",
+            "title_position": "middle",
+        })
+        self.assertEqual(spec["title_position"], "middle")
+
+    def test_rejects_unknown_title_position(self):
+        with self.assertRaisesRegex(ValueError, "unsupported title_position"):
+            normalize_spec({
+                "schema_version": 1,
+                "source": "input.ppm",
+                "output": "scene.mp4",
+                "title_position": "top",
+            })
 
     def test_rejects_unknown_pan_easing(self):
         with self.assertRaisesRegex(ValueError, "unsupported pan_easing"):

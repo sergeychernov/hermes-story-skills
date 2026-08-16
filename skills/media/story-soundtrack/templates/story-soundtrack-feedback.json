@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "story_id": "example-story",
+  "from_revision": 1,
+  "requested_revision": 2,
+  "user_feedback": "Точная цитата возражения пользователя.",
+  "requested_changes": [
+    {
+      "target": "routing",
+      "change": {
+        "scene_id": "scene-02",
+        "rhythm_gain": 0.55
+      }
+    }
+  ]
+}

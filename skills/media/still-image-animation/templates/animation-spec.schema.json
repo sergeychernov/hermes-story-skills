@@ -88,6 +88,12 @@
       "default": "",
       "description": "Optional burned-in title text for the full scene. Requires FFmpeg drawtext and a system font."
     },
+    "title_position": {
+      "type": "string",
+      "enum": ["lower_fifth", "bottom", "middle"],
+      "default": "lower_fifth",
+      "description": "Use middle over unimportant background when lower positions would cover faces; bottom is not suitable for YouTube delivery UI."
+    },
     "overwrite": {
       "type": "boolean",
       "default": false,

@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "id": "group-01",
+  "title": "Opening beat",
+  "members": [
+    {"ref": "scene-a", "path": "scenes/beat-01.mp4", "type": "scene"},
+    {"ref": "scene-b", "path": "scenes/beat-02.mp4", "type": "scene"}
+  ],
+  "output": "exports/group-01.mp4",
+  "report": "exports/group-01-report.json",
+  "target": {"width": 1080, "height": 1920, "fps": 30},
+  "overwrite": false
+}

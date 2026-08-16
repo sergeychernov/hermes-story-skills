@@ -7,14 +7,15 @@ Use this after the user has explicitly approved a YouTube publication. OAuth set
 1. Require the user-facing audience choice **для своих контактов / для всех / по ссылке** for this publication. Map it to `private` / `public` / `unlisted`; do not use a default. Clarify that YouTube `private` means explicitly invited Google accounts, not the user's phone or Telegram contacts.
 2. Resolve the **exact file path that will be uploaded** before any hash or API work. If the user reviewed a delivery transcode, require it to be a derivative of the same approved canonical master; do not silently upload an older master or a visually different full-resolution file.
 3. Recompute that exact upload file's SHA-256 and require it to equal the path and hash in the current green `verification.json`. Ad-hoc decode checks, manifest notes, or a hash recorded only under `full_preview` do not replace package verification.
-4. Require `verification.json` to be newer than the manifest, the exact upload file, and all selected-source changes. A mismatch or stale record is a **hard stop**: regenerate verification before calling `videos.insert`, never repair the record after publication.
-5. Confirm title and description files are non-empty.
-6. Confirm credential presence without printing values.
-7. Refresh OAuth and identify the destination channel through a read-only API call. Do not upload merely to test credentials.
+4. Require `verification.json` to be newer than the manifest, the exact upload file, the approved cover, and all selected-source changes. A mismatch or stale record is a **hard stop**: regenerate verification before calling `videos.insert`, never repair the record after publication.
+5. Recompute the approved cover's SHA-256 and require it to equal `cover.sha256` in the current green `verification.json`. The cover must be a real JPEG or PNG validated by file bytes (not extension alone), at most 2 MiB, with a supported signature. Missing, mismatched, oversized, or corrupt covers are a **hard stop** before OAuth or any network write.
+6. Confirm title and description files are non-empty.
+7. Confirm credential presence without printing values.
+8. Refresh OAuth and identify the destination channel through a read-only API call. Do not upload merely to test credentials.
 
 ## Upload exactly once
 
-List the registered targets, ask the user to choose one, then run `scripts/publish_youtube.py` once with the approved media, metadata, required `--channel <selected-key>`, and required `--audience {contacts,everyone,link}`. Capture the returned channel, video ID, and URL. The script verifies the selected OAuth channel before upload and maps `contacts` → `private`, `everyone` → `public`, and `link` → `unlisted`.
+List the registered targets, ask the user to choose one, then run `scripts/publish_youtube.py` once with the approved media, metadata, required `--cover`, required `--channel <selected-key>`, and required `--audience {contacts,everyone,link}`. Capture the returned channel, video ID, and URL. The script verifies the selected OAuth channel before upload and maps `contacts` → `private`, `everyone` → `public`, and `link` → `unlisted`.
 
 If the request fails after upload initiation or the response is ambiguous, do **not** immediately retry. First query YouTube for the returned/known ID or otherwise rule out an already-created video. A blind retry can create a duplicate.
 
@@ -32,6 +33,14 @@ Do not report the publication as complete yet. Poll `videos.list` with `part=sni
 
 Use bounded polling. If processing becomes `failed` or `terminated`, or upload status becomes `failed`, `rejected`, or `deleted`, stop and report the provider's safe error fields without retrying the upload.
 
+## Cover thumbnail via API
+
+After processing/read-back succeeds and **before** playlist insertion or success output, upload the verified cover through `POST https://www.googleapis.com/upload/youtube/v3/thumbnails/set?videoId=...&uploadType=media` with the correct MIME type, bearer token, and content length. Require a `youtube#thumbnailSetResponse` with a non-empty `items` array.
+
+If thumbnail upload fails after the video is already uploaded and read-back verified, do **not** retry the video upload. Report safe JSON with `video_uploaded=true` and `thumbnail_uploaded=false`, plus the known video ID/URL.
+
+The **Shorts-grid frame** is a separate manual surface in YouTube Studio. The Data API cannot set or verify it; treat `thumbnails.set` as verification of the standard watch-page thumbnail only.
+
 ## Final verification
 
 After processing succeeds, verify through the API:
@@ -39,7 +48,8 @@ After processing succeeds, verify through the API:
 - returned ID matches the requested video;
 - exact title matches the prepared title;
 - `privacyStatus` matches the user's explicit choice;
-- processing and upload states are successful.
+- processing and upload states are successful;
+- the cover thumbnail upload returned `youtube#thumbnailSetResponse` with items.
 
 For `public` publication, also open the returned watch URL and verify that the public page resolves to the expected title. Treat the API as authoritative for processing state; page availability alone is not enough.
 
@@ -63,6 +73,7 @@ Only after successful verification, write `publish-record.json` with:
 - UTC timestamp;
 - video ID and URL;
 - uploaded media SHA-256;
+- cover path and SHA-256;
 - visibility.
 
 Never include OAuth tokens, client secrets, full API responses, or authorization codes.

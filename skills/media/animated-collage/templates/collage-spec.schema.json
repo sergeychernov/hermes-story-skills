@@ -1,0 +1,157 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.invalid/animated-collage/collage-spec.schema.json",
+  "title": "Animated collage render specification",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "sources", "output"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "sources": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 6,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path"],
+        "properties": {
+          "path": {"type": "string", "minLength": 1},
+          "focus_x": {"type": "number", "minimum": 0, "maximum": 1, "default": 0.5},
+          "focus_y": {"type": "number", "minimum": 0, "maximum": 1, "default": 0.5},
+          "title_safe": {"type": "boolean", "default": false},
+          "hero": {"type": "boolean", "default": false}
+        }
+      }
+    },
+    "output": {"type": "string", "minLength": 1},
+    "work_dir": {"type": "string"},
+    "preview_dir": {"type": "string"},
+    "width": {"type": "integer", "minimum": 240, "default": 1080},
+    "height": {"type": "integer", "minimum": 320, "default": 1920},
+    "fps": {"type": "integer", "minimum": 1, "default": 30},
+    "duration": {"type": "number", "exclusiveMinimum": 1, "default": 5},
+    "entry_seconds": {"type": "number", "minimum": 0, "default": 2},
+    "layout": {
+      "enum": [
+        "auto",
+        "stack",
+        "2+1",
+        "2x2",
+        "2+1+1",
+        "2+1+2",
+        "2+2+1",
+        "portrait-pairs-descending",
+        "portrait-pairs-ascending",
+        "portrait-triples-descending",
+        "portrait-triples-ascending",
+        "2+2+1+1",
+        "overlap_stack"
+      ],
+      "default": "auto"
+    },
+    "overlap_ratio": {
+      "type": "number",
+      "minimum": 0.3,
+      "maximum": 0.5,
+      "default": 0.4,
+      "description": "Overlap fraction between adjacent overlap_stack cards (z-order neighbors and cross-row stacks) where expanded rects intersect (3-6 sources)."
+    },
+    "base_layout": {
+      "enum": [
+        "auto",
+        "stack",
+        "2+1",
+        "2x2",
+        "2+1+1",
+        "2+1+2",
+        "2+2+1",
+        "2+2+1+1",
+        "custom"
+      ],
+      "default": "auto",
+      "description": "Tiled base layout whose heterogeneous cells overlap_stack expands from. Only valid with layout overlap_stack. Set to custom when base_cells is supplied."
+    },
+    "base_cells": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 6,
+      "description": "Optional explicit overlap_stack anchors in source order. Each entry is [x,y,w,h] with normalized fractions in [0,1] (x/w use canvas width, y/h use canvas height) or pixel coordinates when any value exceeds 1. Must tile the canvas exactly and match source count; cannot be combined with explicit base_layout.",
+      "items": {
+        "oneOf": [
+          {
+            "type": "array",
+            "minItems": 4,
+            "maxItems": 4,
+            "items": {"type": "number"}
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["x", "y", "w", "h"],
+            "properties": {
+              "x": {"type": "number", "minimum": 0},
+              "y": {"type": "number", "minimum": 0},
+              "w": {"type": "number", "exclusiveMinimum": 0},
+              "h": {"type": "number", "exclusiveMinimum": 0}
+            }
+          }
+        ]
+      }
+    },
+    "rotation_enabled": {
+      "type": "boolean",
+      "default": false,
+      "description": "Deterministic entrance rotation for overlap_stack cards. Off by default."
+    },
+    "rotation_min_deg": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 60,
+      "default": 25,
+      "description": "Minimum absolute start angle in degrees when rotation_enabled is true. Requires rotation_enabled."
+    },
+    "rotation_max_deg": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 60,
+      "default": 45,
+      "description": "Maximum absolute start angle in degrees when rotation_enabled is true. Requires rotation_enabled."
+    },
+    "final_rotation_max_deg": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 10,
+      "default": 0,
+      "description": "Maximum absolute resting angle in degrees after entrance when rotation_enabled is true. Each panel lands at a seeded signed angle uniformly in [-final_rotation_max_deg, +final_rotation_max_deg] by entrance.end and holds it for the remainder of the scene. Default 0 lands at 0°. Requires rotation_enabled."
+    },
+    "seed": {
+      "type": "integer",
+      "description": "Deterministic RNG seed for per-panel signed start angles. Required when rotation_enabled is true."
+    },
+    "paper_edge": {"type": "boolean", "default": false},
+    "paper_edge_seed": {"type": "integer"},
+    "paper_edge_variation_px": {"type": "integer", "minimum": 1, "maximum": 8, "default": 3},
+    "paper_edge_inner_border_px": {"type": "integer", "minimum": 1, "maximum": 24, "default": 1},
+    "paper_edge_inner_overlap_px": {"type": "integer", "minimum": 0, "maximum": 8, "default": 0},
+    "photo_corner_radius_px": {"type": "integer", "minimum": 0, "maximum": 8, "default": 0},
+    "animation": {"enum": ["auto", "fly_in", "row_reveal", "row_reveal_ascending", "hero_last", "none"], "default": "auto"},
+    "gutter": {"type": "integer", "minimum": 0, "maximum": 24, "default": 6},
+    "title": {
+      "oneOf": [
+        {"type": "string"},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "text": {"type": "string", "default": ""},
+            "max_chars": {"type": "integer", "minimum": 5, "default": 25},
+            "font_size": {"type": "integer", "minimum": 12, "default": 54},
+            "align": {"enum": ["left", "center", "right"], "default": "center"}
+          }
+        }
+      ]
+    },
+    "overwrite": {"type": "boolean", "default": false}
+  }
+}

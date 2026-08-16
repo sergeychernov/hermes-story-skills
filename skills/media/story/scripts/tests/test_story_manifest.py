@@ -72,6 +72,77 @@ class StoryManifestTests(unittest.TestCase):
         self.assertFalse(story["render_ready"])
         self.assertEqual(story["pending_scene_ids"], ["s2"])
 
+    def test_accepts_scene_like_group_with_members_and_artifact(self):
+        story = validate_story({
+            "schema_version": 1,
+            "id": "group-story",
+            "title": "Grouped",
+            "status": "scene-review",
+            "arc": {"beats": ["development", "payoff"]},
+            "scenes": [
+                {"id": "s1", "media_id": "m1", "kind": "image", "approval": "approved"},
+                {"id": "s2", "media_id": "m2", "kind": "video", "approval": "approved"},
+                {
+                    "id": "g1", "media_id": "m1+m2", "kind": "group", "approval": "pending",
+                    "members": ["s1", "s2"], "artifact": "exports/g1.mp4", "report": "exports/g1.json"
+                },
+            ],
+            "publication": {"status": "not-approved"},
+        })
+        self.assertEqual(story["scenes"][2]["kind"], "group")
+        self.assertEqual(story["scenes"][2]["members"], ["s1", "s2"])
+        self.assertEqual(story["pending_scene_ids"], ["g1"])
+
+    def test_rejects_duplicate_self_or_unknown_group_members(self):
+        base_scenes = [
+            {"id": "s1", "media_id": "m1", "kind": "image", "approval": "approved"},
+            {"id": "s2", "media_id": "m2", "kind": "video", "approval": "approved"},
+        ]
+        for members, message in (
+            (["s1", "s1"], "unique"),
+            (["s1", "g1"], "itself"),
+            (["s1", "missing"], "unknown"),
+        ):
+            group = {
+                "id": "g1", "media_id": "m1+m2", "kind": "group", "approval": "pending",
+                "members": members, "artifact": "exports/g1.mp4",
+            }
+            with self.subTest(members=members), self.assertRaisesRegex(ValueError, message):
+                validate_story({
+                    "schema_version": 1,
+                    "id": "group-story",
+                    "title": "Grouped",
+                    "status": "scene-review",
+                    "arc": {"beats": []},
+                    "scenes": [*base_scenes, group],
+                    "publication": {"status": "not-approved"},
+                })
+
+    def test_rejects_indirect_group_cycle(self):
+        with self.assertRaisesRegex(ValueError, "cycle"):
+            validate_story({
+                "schema_version": 1, "id": "cycle-story", "title": "Cycle",
+                "status": "scene-review", "arc": {"beats": []},
+                "scenes": [
+                    {"id": "s1", "media_id": "m1", "kind": "image", "approval": "approved"},
+                    {"id": "g1", "media_id": "g1.mp4", "kind": "group", "members": ["s1", "g2"], "artifact": "g1.mp4", "approval": "pending"},
+                    {"id": "g2", "media_id": "g2.mp4", "kind": "group", "members": ["s1", "g1"], "artifact": "g2.mp4", "approval": "pending"},
+                ],
+                "publication": {"status": "not-approved"},
+            })
+
+    def test_rejects_group_without_two_members_or_artifact(self):
+        base = {
+            "schema_version": 1, "id": "bad-group", "title": "Bad", "status": "scene-review",
+            "arc": {"beats": []}, "publication": {"status": "not-approved"},
+        }
+        for scene in (
+            {"id": "g1", "media_id": "m1", "kind": "group", "approval": "pending", "members": ["s1"], "artifact": "g.mp4"},
+            {"id": "g1", "media_id": "m1+m2", "kind": "group", "approval": "pending", "members": ["s1", "s2"]},
+        ):
+            with self.subTest(scene=scene), self.assertRaisesRegex(ValueError, "group"):
+                validate_story({**base, "scenes": [scene]})
+
     def test_rejects_wrong_container_types(self):
         base = {
             "schema_version": 1,

@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "mode": "natural_composite",
+  "background": "derived/covers/generated-natural-background-v1.png",
+  "output": "exports/youtube-api-thumbnail-natural-v1.jpg",
+  "width": 3840,
+  "height": 2160,
+  "platform_preset": "youtube_api_thumbnail",
+  "focus_x": 0.5,
+  "focus_y": 0.5,
+  "text_anchor_x": 0.5,
+  "text": {
+    "accent_headline": "ПЕКИН",
+    "primary": "ЗООПАРК",
+    "keywords": "ПАНДЫ · ОБЕЗЬЯНЫ · ТИГРЫ"
+  },
+  "colors": {
+    "accent": "#FFD700",
+    "primary": "#FFFFFF",
+    "keywords": "#FFFFFF",
+    "stroke": "#000000"
+  },
+  "provenance": {
+    "ai_assisted": true,
+    "generator": "configured image generation/editing tool",
+    "source_references": []
+  },
+  "overwrite": false
+}

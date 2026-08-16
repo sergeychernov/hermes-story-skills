@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Natural Platform Cover Spec",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "mode", "background", "output", "width", "height", "platform_preset", "focus_x", "focus_y", "text", "overwrite"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "mode": {"const": "natural_composite"},
+    "background": {"type": "string", "pattern": "^(?!/)(?!.*\\.\\.)[^\\0]+$"},
+    "output": {"type": "string", "pattern": "^(?!/)(?!.*\\.\\.)[^\\0]+$"},
+    "width": {"type": "integer", "minimum": 1, "maximum": 8192},
+    "height": {"type": "integer", "minimum": 1, "maximum": 8192},
+    "platform_preset": {"enum": ["youtube_api_thumbnail", "youtube_shorts_cover", "instagram_reels_cover", "telegram_story_cover"]},
+    "focus_x": {"type": "number", "minimum": 0, "maximum": 1},
+    "focus_y": {"type": "number", "minimum": 0, "maximum": 1},
+    "text_anchor_x": {"type": "number", "minimum": 0.15, "maximum": 0.85},
+    "text": {
+      "type": "object",
+      "properties": {
+        "accent_headline": {"type": "string"},
+        "primary": {"type": "string"},
+        "keywords": {"type": "string"}
+      }
+    },
+    "colors": {"type": "object"},
+    "provenance": {"type": "object"},
+    "overwrite": {"type": "boolean"}
+  }
+}

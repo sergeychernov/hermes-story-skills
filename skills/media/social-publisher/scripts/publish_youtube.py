@@ -6,16 +6,22 @@ import argparse
 import hashlib
 import json
 import os
+import struct
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import zlib
 from pathlib import Path
 
 from youtube_channel_registry import credentials_for_channel
 
 DEFAULT_SHORTS_PLAYLIST = "Лягушка-путешественница"
 API = "https://www.googleapis.com/youtube/v3"
+THUMBNAIL_UPLOAD = "https://www.googleapis.com/upload/youtube/v3/thumbnails/set"
+COVER_MAX_BYTES = 2 * 1024 * 1024
+JPEG_SOI = b"\xff\xd8\xff"
+PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 AUDIENCE_TO_PRIVACY = {
     "contacts": "private",
     "everyone": "public",
@@ -147,7 +153,51 @@ def file_sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def verify_approved_package(video: Path, verification: Path) -> str:
+def _png_chunk_crc(chunk_type: bytes, data: bytes) -> int:
+    return zlib.crc32(chunk_type + data) & 0xFFFFFFFF
+
+
+def _validate_png(data: bytes) -> None:
+    if len(data) < 8 + 4 + 4 + 4:
+        raise ValueError("corrupt cover image: PNG is truncated")
+    offset = 8
+    chunk_length = struct.unpack(">I", data[offset:offset + 4])[0]
+    chunk_type = data[offset + 4:offset + 8]
+    if chunk_type != b"IHDR":
+        raise ValueError("corrupt cover image: PNG is missing IHDR")
+    ihdr_end = offset + 8 + chunk_length + 4
+    if ihdr_end > len(data):
+        raise ValueError("corrupt cover image: PNG IHDR is truncated")
+    ihdr_data = data[offset + 8:ihdr_end - 4]
+    ihdr_crc = struct.unpack(">I", data[ihdr_end - 4:ihdr_end])[0]
+    if ihdr_crc != _png_chunk_crc(b"IHDR", ihdr_data):
+        raise ValueError("corrupt cover image: PNG IHDR checksum is invalid")
+
+
+def _validate_jpeg(data: bytes) -> None:
+    if not data.endswith(b"\xff\xd9"):
+        raise ValueError("corrupt cover image: JPEG is missing EOI marker")
+
+
+def validate_cover(path: Path) -> tuple[str, bytes]:
+    if not path.is_file():
+        raise ValueError(f"cover is missing: {path}")
+    size = path.stat().st_size
+    if size > COVER_MAX_BYTES:
+        raise ValueError("cover exceeds the 2 MiB limit")
+    data = path.read_bytes()
+    if len(data) > COVER_MAX_BYTES:
+        raise ValueError("cover exceeds the 2 MiB limit")
+    if data.startswith(JPEG_SOI):
+        _validate_jpeg(data)
+        return "image/jpeg", data
+    if data.startswith(PNG_SIGNATURE):
+        _validate_png(data)
+        return "image/png", data
+    raise ValueError("unsupported cover image: must be JPEG or PNG")
+
+
+def verify_approved_package(video: Path, cover: Path, verification: Path) -> dict[str, object]:
     if not video.is_file():
         raise ValueError(f"video is missing: {video}")
     try:
@@ -156,11 +206,39 @@ def verify_approved_package(video: Path, verification: Path) -> str:
         raise ValueError(f"invalid verification report: {exc}") from exc
     if report.get("ok") is not True:
         raise ValueError("verification report is not green")
-    expected = (report.get("video") or {}).get("sha256")
-    actual = file_sha256(video)
-    if not expected or expected != actual:
+    expected_video = (report.get("video") or {}).get("sha256")
+    video_bytes = video.read_bytes()
+    actual_video = hashlib.sha256(video_bytes).hexdigest()
+    if not expected_video or expected_video != actual_video:
         raise ValueError("video hash does not match verification report")
-    return actual
+    cover_mime, cover_bytes = validate_cover(cover)
+    expected_cover = (report.get("cover") or {}).get("sha256")
+    actual_cover = hashlib.sha256(cover_bytes).hexdigest()
+    if not expected_cover or expected_cover != actual_cover:
+        raise ValueError("cover hash does not match verification report")
+    return {
+        "video_sha256": actual_video,
+        "video_bytes": video_bytes,
+        "cover_sha256": actual_cover,
+        "cover_mime": cover_mime,
+        "cover_bytes": cover_bytes,
+    }
+
+
+def upload_thumbnail(token: str, video_id: str, cover: bytes, content_type: str) -> dict:
+    url = THUMBNAIL_UPLOAD + "?" + urllib.parse.urlencode({
+        "videoId": video_id,
+        "uploadType": "media",
+    })
+    headers = {
+        "Authorization": "Bearer " + token,
+        "Content-Type": content_type,
+        "Content-Length": str(len(cover)),
+    }
+    result = json.load(req(url, cover, headers, "POST"))
+    if result.get("kind") != "youtube#thumbnailSetResponse" or not result.get("items"):
+        raise RuntimeError("YouTube thumbnail upload returned an invalid response")
+    return result
 
 
 def wait_for_verified_upload(
@@ -196,7 +274,11 @@ def wait_for_verified_upload(
                 "description": snippet.get("description"),
                 "tags": snippet.get("tags") or [],
             }
-            if actual != expected:
+            if (
+                actual["title"] != expected["title"]
+                or actual["description"] != expected["description"]
+                or sorted(set(actual["tags"])) != sorted(set(expected["tags"]))
+            ):
                 raise ValueError("YouTube read-back metadata does not match the approved metadata")
             if status.get("privacyStatus") != privacy:
                 raise ValueError("YouTube read-back privacy does not match the approved audience")
@@ -213,6 +295,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--channel", help="Key from manage_youtube_channels.py list; omitted only for legacy environment credentials")
     parser.add_argument("--video", required=True, type=Path)
+    parser.add_argument("--cover", required=True, type=Path, help="Approved JPEG or PNG cover (max 2 MiB)")
     parser.add_argument("--title-file", required=True, type=Path)
     parser.add_argument("--description-file", required=True, type=Path)
     parser.add_argument(
@@ -239,7 +322,7 @@ def main():
     if not args.approved:
         raise SystemExit("Refusing publication without explicit --approved after the user command")
     try:
-        approved_sha256 = verify_approved_package(args.video, args.verification)
+        approved = verify_approved_package(args.video, args.cover, args.verification)
         title = read_required_text(args.title_file, "title")
         description = read_required_text(args.description_file, "description")
         tags = read_tags(args.tags_file)
@@ -298,7 +381,7 @@ def main():
         "Authorization": "Bearer " + token,
         "Content-Type": "application/json; charset=UTF-8",
         "X-Upload-Content-Type": "video/mp4",
-        "X-Upload-Content-Length": str(args.video.stat().st_size),
+        "X-Upload-Content-Length": str(len(approved["video_bytes"])),
     }
     start = req(
         "https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status",
@@ -309,11 +392,11 @@ def main():
     location = start.headers["Location"]
     result = json.load(req(
         location,
-        args.video.read_bytes(),
+        approved["video_bytes"],
         {
             "Authorization": "Bearer " + token,
             "Content-Type": "video/mp4",
-            "Content-Length": str(args.video.stat().st_size),
+            "Content-Length": str(len(approved["video_bytes"])),
         },
         "PUT",
     ))
@@ -341,17 +424,37 @@ def main():
             "url": "https://youtu.be/" + video_id,
             "readback_verified": False,
             "error_type": type(exc).__name__,
-            "error": str(exc),
+        }
+        raise SystemExit(json.dumps(safe, ensure_ascii=False)) from None
+
+    try:
+        thumb_response = upload_thumbnail(
+            token,
+            video_id,
+            approved["cover_bytes"],
+            approved["cover_mime"],
+        )
+    except (urllib.error.HTTPError, urllib.error.URLError, RuntimeError, ValueError) as exc:
+        safe = {
+            "ok": False,
+            "platform": "youtube",
+            "video_uploaded": True,
+            "thumbnail_uploaded": False,
+            "id": video_id,
+            "url": "https://youtu.be/" + video_id,
+            "readback_verified": True,
+            "error_type": type(exc).__name__,
         }
         raise SystemExit(json.dumps(safe, ensure_ascii=False)) from None
 
     try:
         playlist_item_id = add_to_playlist(token, playlist_id, video_id)
-    except (urllib.error.HTTPError, urllib.error.URLError, RuntimeError) as exc:
+    except (urllib.error.HTTPError, urllib.error.URLError, RuntimeError, ValueError) as exc:
         safe = {
             "ok": False,
             "platform": "youtube",
             "video_uploaded": True,
+            "thumbnail_uploaded": True,
             "id": video_id,
             "url": "https://youtu.be/" + video_id,
             "playlist_added": False,
@@ -372,10 +475,16 @@ def main():
         "url": "https://youtu.be/" + video_id,
         "audience": args.audience,
         "privacy": privacy,
-        "sha256": approved_sha256,
+        "sha256": approved["video_sha256"],
         "readback_verified": True,
         "processing_status": readback["processing_status"],
         "tags": tags,
+        "thumbnail": {
+            "uploaded": True,
+            "path": str(args.cover),
+            "sha256": approved["cover_sha256"],
+            "api_kind": thumb_response["kind"],
+        },
         "playlist": {
             "id": playlist_id,
             "title": args.playlist_title,

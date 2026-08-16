@@ -1,7 +1,7 @@
 ---
 name: still-image-animation
 description: Render one photo or designed still into a verified animated MP4 scene with controlled pan, zoom, crop, focus, safe typography, and a versioned JSON contract. Use for independent per-image animation and QA; not for story order or publication.
-version: 1.0.0
+version: 1.0.5
 author: Sergey Chernov / Hermes Agent
 license: MIT
 metadata:
@@ -20,11 +20,12 @@ It must not infer narrative order, travel context, audience, social platform, or
 ## Workflow
 
 1. Inspect the source image and identify its visual anchor.
-2. Choose `crop` for ordinary full-frame motion; use `contain` only when preserving the entire image is essential.
+2. Choose `crop` for ordinary full-frame motion. For a landscape source targeting 9:16, default to `crop` plus `pan_left` or `pan_right` so the source itself fills the canvas and the scene reveals the wide composition over time. Do not use blurred, duplicated, mirrored, or otherwise synthesized background fill unless the user explicitly requests it. Use `contain` only when preserving the entire image in every frame is essential and visible letterboxing has been explicitly accepted.
 3. Choose one motion: `pan_left`, `pan_right`, `zoom_in`, `zoom_out`, or an explicitly requested `none`.
 4. Set normalized `focus_x` and `focus_y` in `[0,1]`. For faces, focus between the eyes; for a pair, use the midpoint. Pan crosses the full horizontal crop range; default `pan_easing: focus_dwell` is faster at the edges and slower near `focus_x` without stopping; use `linear` for constant speed.
-5. Create a JSON spec from `templates/animation-spec.json` using paths relative to a dedicated root. See `templates/animation-spec.schema.json` for allowed values and defaults.
-6. Render:
+5. Keep `title_position: lower_fifth` by default. Use `title_position: middle` over visually unimportant background when the lower-fifth box would cover faces or primary action. `bottom` is available for non-YouTube canvases but is outside the reliable YouTube Shorts safe area; never use it for a YouTube deliverable.
+6. Create a JSON spec from `templates/animation-spec.json` using paths relative to a dedicated root. See `templates/animation-spec.schema.json` for allowed values and defaults.
+7. Render:
 
 ```bash
 python3 <skill-dir>/scripts/animate_still.py \
@@ -32,8 +33,8 @@ python3 <skill-dir>/scripts/animate_still.py \
   --spec <animation-spec.json>
 ```
 
-7. Require a JSON report with `status: ok`, matching dimensions and hash, `decodable: true`, and `motion_detected: true` for moving scenes.
-8. Inspect representative start/middle/end frames before presenting the scene. Technical verification does not replace visual QA.
+8. Require a JSON report with `status: ok`, matching dimensions and hash, `decodable: true`, and `motion_detected: true` for moving scenes.
+9. Inspect representative start/middle/end frames before presenting the scene. Technical verification does not replace visual QA.
 
 ## Contract and safety
 
@@ -45,6 +46,7 @@ python3 <skill-dir>/scripts/animate_still.py \
 - Default output is 1080×1920, 30 fps, H.264/yuv420p.
 - Fade in/out (0.2 s each) are on by default; disable independently with `fade_in: false` or `fade_out: false`.
 - Pan easing: `focus_dwell` (default) or `linear`.
+- Title position: `lower_fifth` (default shared YouTube-safe band: the bottom edge of the complete title box is pinned exactly to 72% of frame height, leaving the lower 28% clear for current Shorts metadata and promotion controls, plus a reserved right-side controls zone), `middle` for avoiding faces/actions while staying YouTube-safe, or `bottom` only for platforms without bottom delivery controls. The geometry comes from `shorts-assembly/scripts/youtube_safe_title.py`; do not duplicate constants locally.
 - Preserve original files; write only the declared derived output and transient title sidecar.
 
 Read `references/contract.md` before integrating another renderer or orchestrator.

@@ -10,7 +10,7 @@ ROOT_FIELDS = {
 }
 STATUSES = {"collecting", "title-review", "scene-review", "ready-to-render", "rendered", "verified"}
 APPROVALS = {"pending", "provisional", "approved", "rejected"}
-KINDS = {"image", "video"}
+KINDS = {"image", "video", "group"}
 PUBLICATION_STATUSES = {"not-approved", "approved", "published"}
 
 
@@ -80,6 +80,23 @@ def validate_story(raw: dict) -> dict:
         kind = str(scene.get("kind", ""))
         if kind not in KINDS:
             raise ValueError(f"unsupported scene kind: {kind}")
+        scene["kind"] = kind
+        if kind == "group":
+            members = scene.get("members")
+            if (
+                not isinstance(members, list)
+                or len(members) < 2
+                or not all(isinstance(member, str) and member.strip() for member in members)
+            ):
+                raise ValueError("group scene requires at least two non-empty member ids")
+            if not isinstance(scene.get("artifact"), str) or not scene["artifact"].strip():
+                raise ValueError("group scene requires a non-empty artifact path")
+            scene["members"] = [member.strip() for member in members]
+            scene["artifact"] = scene["artifact"].strip()
+            if "report" in scene:
+                if not isinstance(scene["report"], str) or not scene["report"].strip():
+                    raise ValueError("group scene report must be a non-empty string when provided")
+                scene["report"] = scene["report"].strip()
         approval = str(scene.get("approval", "pending"))
         if approval not in APPROVALS:
             raise ValueError(f"unsupported scene approval: {approval}")
@@ -88,6 +105,43 @@ def validate_story(raw: dict) -> dict:
             pending.append(scene_id)
         normalized_scenes.append(scene)
     result["scenes"] = normalized_scenes
+
+    all_scene_ids = {scene["id"] for scene in normalized_scenes}
+    for scene in normalized_scenes:
+        if scene["kind"] != "group":
+            continue
+        members = scene["members"]
+        if len(set(members)) != len(members):
+            raise ValueError(f"group scene {scene['id']} member ids must be unique")
+        if scene["id"] in members:
+            raise ValueError(f"group scene {scene['id']} cannot contain itself")
+        unknown_members = sorted(set(members) - all_scene_ids)
+        if unknown_members:
+            raise ValueError(
+                f"group scene {scene['id']} references unknown member ids: {', '.join(unknown_members)}"
+            )
+
+    group_members = {
+        scene["id"]: list(scene["members"])
+        for scene in normalized_scenes if scene["kind"] == "group"
+    }
+    visiting: set[str] = set()
+    visited: set[str] = set()
+
+    def visit_group(group_id: str) -> None:
+        if group_id in visiting:
+            raise ValueError(f"group dependency cycle detected at {group_id}")
+        if group_id in visited:
+            return
+        visiting.add(group_id)
+        for member_id in group_members[group_id]:
+            if member_id in group_members:
+                visit_group(member_id)
+        visiting.remove(group_id)
+        visited.add(group_id)
+
+    for group_id in group_members:
+        visit_group(group_id)
 
     publication = result.get("publication", {})
     if not isinstance(publication, dict):
