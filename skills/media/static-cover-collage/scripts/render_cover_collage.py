@@ -72,7 +72,8 @@ PLATFORM_CONTRACTS = {
         "platform":"youtube", "surface":"shorts_custom_thumbnail", "width":2160, "height":3840,
         "dimensions_provenance":"official", "separate_cover_upload":True,
         "official_source":"https://support.google.com/youtube/answer/72431?hl=en",
-        "text_safe_rect":[0.08,0.0,0.72,0.80], "safe_zone_provenance":"local_ui_policy",
+        "text_safe_rect":[0.08,0.29,0.72,0.42],
+        "safe_zone_provenance":"local_youtube_shorts_ui_and_telegram_og_center_crop_policy",
     },
     "instagram_reels_cover": {
         "platform":"instagram", "surface":"reels_cover_photo", "width":420, "height":654,

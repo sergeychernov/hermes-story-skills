@@ -26,7 +26,172 @@ def _make_verification_report(video_bytes: bytes, cover_bytes: bytes) -> dict:
     }
 
 
+def _make_opening_video(path: Path, cover_frames: int) -> bytes:
+    total_frames = max(5, cover_frames + 1)
+    pixels = 32 * 32
+    red = bytes((220, 20, 20)) * pixels
+    blue = bytes((20, 20, 220)) * pixels
+    raw = red * cover_frames + blue * (total_frames - cover_frames)
+    subprocess.run([
+        'ffmpeg', '-hide_banner', '-loglevel', 'error', '-y',
+        '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-s', '32x32', '-r', '30', '-i', '-',
+        '-frames:v', str(total_frames), '-c:v', 'libx264', '-pix_fmt', 'yuv420p',
+        '-r', '30', '-fps_mode', 'cfr', '-video_track_timescale', '90000', str(path),
+    ], input=raw, check=True, capture_output=True)
+    return path.read_bytes()
+
+
+def _write_story(root: Path, *, audience: str = "contacts") -> Path:
+    story = root / "story.json"
+    story.write_text(json.dumps({
+        "schema_version": 1,
+        "id": "test-story",
+        "publication": {
+            "targets": {
+                "youtube": {
+                    "channel_key": "legacy-env",
+                    "audience": audience,
+                    "playlist_title": "Лягушка-путешественница",
+                    "video_path": "video.mp4",
+                    "cover_path": "cover.jpg",
+                    "title_file": "youtube-title.txt",
+                    "description_file": "youtube-description.txt",
+                    "tags_file": "youtube-tags.txt",
+                    "verification_file": "video.mp4.report.json",
+                    "cover_verification_file": "cover.jpg.report.json",
+                    "made_for_kids": False,
+                    "contains_synthetic_media": False,
+                    "notify_subscribers": False,
+                    "recording_date_decision": "omit",
+                    "location_decision": "omit"
+                }
+            }
+        }
+    }), encoding="utf-8")
+    return story
+
+
+def _write_approved_preflight(root: Path, *, audience: str = "contacts") -> tuple[Path, Path]:
+    from youtube_metadata_preflight import build_approved_manifest
+
+    for old_name, canonical_name in (
+        ("title.txt", "youtube-title.txt"),
+        ("description.txt", "youtube-description.txt"),
+        ("tags.txt", "youtube-tags.txt"),
+    ):
+        old_path = root / old_name
+        canonical_path = root / canonical_name
+        if old_path.is_file() and not canonical_path.exists():
+            canonical_path.write_bytes(old_path.read_bytes())
+    video = root / "video.mp4"
+    cover = root / "cover.jpg"
+    (root / "video.mp4.report.json").write_text(json.dumps({
+        "artifact": "video.mp4",
+        "status": "review-ready",
+        "timeline": {"cover_frames": 4, "first_live_frame": 4},
+        "video": {
+            "full_decode": "passed",
+            "sha256": hashlib.sha256(video.read_bytes()).hexdigest(),
+        },
+    }), encoding="utf-8")
+    (root / "cover.jpg.report.json").write_text(json.dumps({
+        "output": {
+            "path": "cover.jpg",
+            "sha256": hashlib.sha256(cover.read_bytes()).hexdigest(),
+        },
+        "platform_contract": {
+            "platform": "youtube",
+            "surface": "standard_api_thumbnail",
+        },
+        "visual_review": "user-approved",
+    }), encoding="utf-8")
+    story = _write_story(root, audience=audience)
+    path = root / "youtube-publication-preflight.json"
+    manifest = build_approved_manifest(
+        story,
+        approved_at="2026-08-16T04:00:00Z",
+        approval_note="Test user approved exact metadata summary",
+    )
+    path.write_text(json.dumps(manifest), encoding="utf-8")
+    return story, path
+
+
 class YouTubePlaylistTests(unittest.TestCase):
+    def test_publish_record_is_immutable_atomic_and_private(self):
+        from publish_youtube import write_publish_record
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            story = root / "story.json"
+            story.write_text("{}", encoding="utf-8")
+            record = {"video_id": "abc-123", "platform": "youtube"}
+            path = write_publish_record(story, record)
+            self.assertEqual(path.name, "publish-record-abc-123.json")
+            self.assertEqual(json.loads(path.read_text(encoding="utf-8")), record)
+            self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+            with self.assertRaises(FileExistsError):
+                write_publish_record(story, record)
+
+    def test_upload_attempt_is_private_immutable_and_blocks_repeat(self):
+        from publish_youtube import reserve_upload_attempt, write_upload_result
+
+        with tempfile.TemporaryDirectory() as directory:
+            story = Path(directory) / 'story.json'
+            story.write_text('{}', encoding='utf-8')
+            attempt = reserve_upload_attempt(
+                story, media_sha256='a' * 64, manifest_sha256='b' * 64,
+                channel_key='current',
+            )
+            self.assertEqual(attempt.stat().st_mode & 0o777, 0o600)
+            self.assertTrue(json.loads(attempt.read_text())['do_not_retry_blindly'])
+            with self.assertRaisesRegex(ValueError, 'already exists'):
+                reserve_upload_attempt(
+                    story, media_sha256='a' * 64, manifest_sha256='c' * 64,
+                    channel_key='current',
+                )
+            result = write_upload_result(attempt, 'video-123')
+            self.assertEqual(result.stat().st_mode & 0o777, 0o600)
+            self.assertEqual(json.loads(result.read_text())['video_id'], 'video-123')
+
+    def test_existing_publish_record_blocks_same_media_hash(self):
+        from publish_youtube import refuse_existing_publication
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            story = root / 'story.json'
+            story.write_text('{}', encoding='utf-8')
+            (root / 'publish-record-old.json').write_text(json.dumps({
+                'platform': 'youtube', 'media_sha256': 'c' * 64,
+            }), encoding='utf-8')
+            with self.assertRaisesRegex(ValueError, 'already have'):
+                refuse_existing_publication(story, 'c' * 64)
+            refuse_existing_publication(story, 'd' * 64)
+
+    def test_live_media_gate_proves_exact_four_frame_cover(self):
+        from publish_youtube import verify_four_frame_cover_bytes
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            evidence = verify_four_frame_cover_bytes(
+                _make_opening_video(root / 'four.mp4', 4)
+            )
+            self.assertEqual(evidence['cover_frames'], 4)
+            self.assertEqual(evidence['first_live_frame'], 4)
+            with self.assertRaisesRegex(ValueError, 'frames 0..3'):
+                verify_four_frame_cover_bytes(_make_opening_video(root / 'one.mp4', 1))
+            with self.assertRaisesRegex(ValueError, 'frame 4 is still the cover'):
+                verify_four_frame_cover_bytes(_make_opening_video(root / 'long.mp4', 24))
+
+    def test_recording_date_readback_accepts_youtube_midnight_normalization(self):
+        from publish_youtube import _same_recording_date
+
+        self.assertTrue(_same_recording_date(
+            "2026-08-12T00:00:00Z", "2026-08-12T15:30:00+08:00"
+        ))
+        self.assertFalse(_same_recording_date(
+            "2026-08-13T00:00:00Z", "2026-08-12T15:30:00+08:00"
+        ))
+
     def test_reads_required_deduplicated_tags(self):
         from publish_youtube import read_tags
 
@@ -43,6 +208,73 @@ class YouTubePlaylistTests(unittest.TestCase):
             path.write_text('\n', encoding='utf-8')
             with self.assertRaisesRegex(ValueError, 'empty'):
                 read_tags(path)
+
+    def test_snapshot_rehashes_exact_bytes_that_will_be_consumed(self):
+        from publish_youtube import snapshot_approved_artifacts
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            title = root / "youtube-title.txt"
+            title.write_bytes(b"Approved title")
+            manifest = root / "approved.json"
+            manifest.write_text(json.dumps({
+                "package": {
+                    "title_file": hashlib.sha256(title.read_bytes()).hexdigest(),
+                },
+            }), encoding="utf-8")
+            snapshots = snapshot_approved_artifacts(
+                manifest, {"title_file": title}
+            )
+            self.assertEqual(snapshots["title_file"], b"Approved title")
+            title.write_bytes(b"Changed after approval")
+            with self.assertRaisesRegex(ValueError, "title_file hash"):
+                snapshot_approved_artifacts(manifest, {"title_file": title})
+
+    def test_untrusted_schema_content_is_rejected(self):
+        from publish_youtube import require_trusted_schema
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            trusted = root / "trusted.json"
+            candidate = root / "candidate.json"
+            trusted.write_text('{"approval": true}', encoding="utf-8")
+            candidate.write_text('{"approval": false}', encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "untrusted publication schema"):
+                require_trusted_schema(candidate, trusted, "publication schema")
+
+    def test_frozen_cover_report_snapshot_is_semantically_revalidated(self):
+        from publish_youtube import validate_snapshot_eligibility
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            story = _write_story(root)
+            video = root / "video.mp4"
+            cover = root / "cover.jpg"
+            video.write_bytes(b"video")
+            cover.write_bytes(MINIMAL_JPEG)
+            (root / "title.txt").write_text("Title", encoding="utf-8")
+            (root / "description.txt").write_text("Description", encoding="utf-8")
+            (root / "tags.txt").write_text("tag", encoding="utf-8")
+            _write_approved_preflight(root)
+            config = json.loads(story.read_text(encoding="utf-8"))[
+                "publication"
+            ]["targets"]["youtube"]
+            schema_path = Path(__file__).resolve().parents[1] / "templates/youtube-publication.schema.json"
+            schema = json.loads(schema_path.read_text(encoding="utf-8"))
+            snapshots = {
+                "video": video.read_bytes(),
+                "cover": cover.read_bytes(),
+                "verification_file": (root / "video.mp4.report.json").read_bytes(),
+                "cover_verification_file": (root / "cover.jpg.report.json").read_bytes(),
+                "title_file": (root / "youtube-title.txt").read_bytes(),
+                "description_file": (root / "youtube-description.txt").read_bytes(),
+                "tags_file": (root / "youtube-tags.txt").read_bytes(),
+            }
+            report = json.loads(snapshots["cover_verification_file"])
+            report["visual_review"] = "rejected"
+            snapshots["cover_verification_file"] = json.dumps(report).encode("utf-8")
+            with self.assertRaisesRegex(ValueError, "no longer eligible"):
+                validate_snapshot_eligibility(config, schema, snapshots)
 
     def test_audience_maps_to_youtube_privacy(self):
         from publish_youtube import privacy_for_audience
@@ -289,49 +521,225 @@ class YouTubePlaylistTests(unittest.TestCase):
             publish_youtube.api_json = original
         self.assertEqual(result["processing_status"], "succeeded")
 
-    def test_cli_refuses_without_explicit_approval_before_credentials(self):
+    def test_readback_requires_both_processing_success_flags(self):
+        import publish_youtube
+
+        base = {
+            "snippet": {"title": "Title", "description": "Description", "tags": ["one"]},
+            "status": {"privacyStatus": "unlisted"},
+            "processingDetails": {},
+        }
+        original = publish_youtube.api_json
+        try:
+            for upload_status, processing_status in (
+                ("processed", "processing"),
+                ("uploaded", "succeeded"),
+            ):
+                with self.subTest(
+                    upload_status=upload_status,
+                    processing_status=processing_status,
+                ):
+                    item = json.loads(json.dumps(base))
+                    item["status"]["uploadStatus"] = upload_status
+                    item["processingDetails"]["processingStatus"] = processing_status
+                    publish_youtube.api_json = lambda *args, _item=item, **kwargs: {
+                        "items": [_item]
+                    }
+                    with self.assertRaises(TimeoutError):
+                        publish_youtube.wait_for_verified_upload(
+                            "token", "video-id",
+                            {"title": "Title", "description": "Description", "tags": ["one"]},
+                            "unlisted", timeout=0, interval=0,
+                        )
+        finally:
+            publish_youtube.api_json = original
+
+    def test_readback_requires_extended_approved_metadata(self):
+        import publish_youtube
+
+        response = {
+            "items": [{
+                "snippet": {
+                    "title": "Title",
+                    "description": "Description",
+                    "tags": ["one"],
+                    "categoryId": "19",
+                    "defaultLanguage": "ru",
+                },
+                "status": {
+                    "privacyStatus": "public",
+                    "uploadStatus": "processed",
+                    "selfDeclaredMadeForKids": False,
+                    "containsSyntheticMedia": True,
+                    "embeddable": True,
+                    "license": "youtube",
+                    "publicStatsViewable": True,
+                },
+                "recordingDetails": {
+                    "recordingDate": "2026-08-13T02:00:00Z",
+                },
+                "processingDetails": {"processingStatus": "succeeded"},
+            }]
+        }
+        original = publish_youtube.api_json
+        publish_youtube.api_json = lambda *args, **kwargs: response
+        expected = {
+            "title": "Title",
+            "description": "Description",
+            "tags": ["one"],
+            "category_id": "19",
+            "default_language": "ru",
+            "made_for_kids": False,
+            "contains_synthetic_media": True,
+                "notify_subscribers": False,
+            "embeddable": True,
+            "license": "youtube",
+            "public_stats_viewable": True,
+            "recording_date": "2026-08-13T02:00:00Z",
+        }
+        try:
+            result = publish_youtube.wait_for_verified_upload(
+                "token", "video-id", expected, "public", timeout=0, interval=0,
+            )
+            self.assertEqual(result["processing_status"], "succeeded")
+            response["items"][0]["status"]["containsSyntheticMedia"] = False
+            with self.assertRaisesRegex(ValueError, "extended metadata"):
+                publish_youtube.wait_for_verified_upload(
+                    "token", "video-id", expected, "public", timeout=0, interval=0,
+                )
+            expected["contains_synthetic_media"] = False
+            del response["items"][0]["status"]["containsSyntheticMedia"]
+            result = publish_youtube.wait_for_verified_upload(
+                "token", "video-id", expected, "public", timeout=0, interval=0,
+            )
+            self.assertEqual(result["processing_status"], "succeeded")
+        finally:
+            publish_youtube.api_json = original
+
+    def test_upload_url_binds_notify_subscribers_decision(self):
+        from publish_youtube import build_youtube_upload_url, validate_resumable_location
+
+        quiet = build_youtube_upload_url("snippet,status", False)
+        loud = build_youtube_upload_url("snippet,status,recordingDetails", True)
+        self.assertIn("notifySubscribers=false", quiet)
+        self.assertIn("part=snippet%2Cstatus", quiet)
+        self.assertIn("notifySubscribers=true", loud)
+        self.assertIn("recordingDetails", loud)
+        self.assertEqual(
+            validate_resumable_location("https://upload.youtube.com/resumable/session"),
+            "https://upload.youtube.com/resumable/session",
+        )
+        self.assertEqual(
+            validate_resumable_location("https://www.googleapis.com/upload/session"),
+            "https://www.googleapis.com/upload/session",
+        )
+        for unsafe in (
+            "http://upload.youtube.com/session",
+            "https://evil.example/session",
+            "https://upload.youtube.com.evil.example/session",
+            "https://user:secret@upload.youtube.com/session",
+            "https://upload.youtube.com:444/session",
+            "https://upload.youtube.com/session#fragment",
+        ):
+            with self.subTest(unsafe=unsafe), self.assertRaises(ValueError):
+                validate_resumable_location(unsafe)
+
+    def test_api_metadata_uses_approved_preflight_decisions(self):
+        from publish_youtube import build_youtube_api_metadata
+
+        meta, parts = build_youtube_api_metadata(
+            title="Title",
+            description="Description",
+            tags=["one", "two"],
+            privacy="public",
+            decisions={
+                "category_id": "19",
+                "default_language": "ru",
+                "made_for_kids": False,
+                "contains_synthetic_media": True,
+                "notify_subscribers": False,
+                "embeddable": True,
+                "license": "youtube",
+                "public_stats_viewable": True,
+                "recording_date_decision": "set",
+                "recording_date": "2026-08-13",
+                "location_decision": "description",
+                "location_text": "Пекинский зоопарк, Пекин, Китай",
+            },
+        )
+
+        self.assertEqual(parts, "snippet,status,recordingDetails")
+        self.assertEqual(meta["snippet"]["categoryId"], "19")
+        self.assertEqual(meta["snippet"]["defaultLanguage"], "ru")
+        self.assertFalse(meta["status"]["selfDeclaredMadeForKids"])
+        self.assertTrue(meta["status"]["containsSyntheticMedia"])
+        self.assertTrue(meta["status"]["embeddable"])
+        self.assertTrue(meta["status"]["publicStatsViewable"])
+        self.assertEqual(meta["status"]["license"], "youtube")
+        self.assertEqual(
+            meta["recordingDetails"]["recordingDate"],
+            "2026-08-13T00:00:00Z",
+        )
+        self.assertNotIn("location", meta["recordingDetails"])
+
+    def test_cli_refuses_without_metadata_preflight_before_credentials(self):
+        import publish_youtube
+
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            paths = {}
-            for name in ('video.mp4', 'cover.jpg', 'title.txt', 'description.txt', 'tags.txt', 'verification.json'):
-                paths[name] = root / name
-                if name == 'cover.jpg':
-                    paths[name].write_bytes(MINIMAL_JPEG)
-                else:
-                    paths[name].write_text('{}' if name == 'verification.json' else 'x', encoding='utf-8')
-            env = os.environ.copy()
-            for key in ('YOUTUBE_CLIENT_ID', 'YOUTUBE_CLIENT_SECRET', 'YOUTUBE_REFRESH_TOKEN'):
-                env.pop(key, None)
-            completed = subprocess.run([
-                sys.executable, str(Path(__file__).with_name('publish_youtube.py')),
-                '--video', str(paths['video.mp4']),
-                '--cover', str(paths['cover.jpg']),
-                '--channel', 'current',
-                '--title-file', str(paths['title.txt']),
-                '--description-file', str(paths['description.txt']),
-                '--tags-file', str(paths['tags.txt']),
-                '--verification', str(paths['verification.json']),
-                '--audience', 'contacts',
-            ], text=True, capture_output=True, env=env)
-            self.assertNotEqual(completed.returncode, 0)
-            self.assertIn('explicit --approved', completed.stderr)
+            video = root / "video.mp4"
+            cover = root / "cover.jpg"
+            video.write_bytes(b"video")
+            cover.write_bytes(MINIMAL_JPEG)
+            (root / "title.txt").write_text("Title", encoding="utf-8")
+            (root / "description.txt").write_text("Description", encoding="utf-8")
+            (root / "tags.txt").write_text("tag\n", encoding="utf-8")
+            report = root / "verification.json"
+            report.write_text(json.dumps(_make_verification_report(
+                video.read_bytes(), cover.read_bytes(),
+            )), encoding="utf-8")
+            story = _write_story(root, audience="everyone")
+            credentials_called = []
+            network_called = []
+            argv = [
+                "publish_youtube.py",
+                "--story", str(story),
+                "--approved",
+            ]
+            original_req = publish_youtube.req
+            original_creds = publish_youtube.legacy_environment_credentials
+            publish_youtube.req = lambda *a, **k: network_called.append(True)
+            publish_youtube.legacy_environment_credentials = (
+                lambda environ=None: credentials_called.append(True)
+            )
+            try:
+                with mock.patch.object(sys, "argv", argv):
+                    with self.assertRaisesRegex(SystemExit, "--metadata-preflight"):
+                        publish_youtube.main()
+            finally:
+                publish_youtube.req = original_req
+                publish_youtube.legacy_environment_credentials = original_creds
+            self.assertFalse(credentials_called)
+            self.assertFalse(network_called)
 
-    def test_legacy_cli_does_not_require_channel_before_approval_gate(self):
+    def test_cli_refuses_without_explicit_approval_before_story_or_credentials(self):
         completed = subprocess.run([
             sys.executable, str(Path(__file__).with_name('publish_youtube.py')),
-            '--video', 'missing.mp4',
-            '--cover', 'missing-cover.jpg',
-            '--title-file', 'missing-title.txt',
-            '--description-file', 'missing-description.txt',
-            '--tags-file', 'missing-tags.txt',
-            '--verification', 'missing-verification.json',
-            '--audience', 'contacts',
+            '--story', 'missing-story.json',
         ], text=True, capture_output=True)
         self.assertNotEqual(completed.returncode, 0)
         self.assertIn('explicit --approved', completed.stderr)
-        self.assertNotIn('--channel is required', completed.stderr)
+        self.assertNotIn('missing-story', completed.stderr)
 
-    def test_cover_hash_mismatch_fails_before_oauth(self):
+    def test_cli_does_not_require_story_before_approval_gate(self):
+        completed = subprocess.run([
+            sys.executable, str(Path(__file__).with_name('publish_youtube.py')),
+        ], text=True, capture_output=True)
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertIn('explicit --approved', completed.stderr)
+        self.assertNotIn('--story is required', completed.stderr)
+
+    def test_cover_mutation_after_approval_fails_before_oauth(self):
         import publish_youtube
 
         with tempfile.TemporaryDirectory() as directory:
@@ -347,17 +755,17 @@ class YouTubePlaylistTests(unittest.TestCase):
                 'cover': {'sha256': '0' * 64},
             }), encoding='utf-8')
 
+            (root / 'title.txt').write_text('T', encoding='utf-8')
+            (root / 'description.txt').write_text('D', encoding='utf-8')
+            (root / 'tags.txt').write_text('tag\n', encoding='utf-8')
+            story, preflight = _write_approved_preflight(root)
+            cover.write_bytes(MINIMAL_PNG)
             network_called = []
             credentials_called = []
             argv = [
                 'publish_youtube.py',
-                '--video', str(video),
-                '--cover', str(cover),
-                '--title-file', str(root / 'title.txt'),
-                '--description-file', str(root / 'description.txt'),
-                '--tags-file', str(root / 'tags.txt'),
-                '--verification', str(report),
-                '--audience', 'contacts',
+                '--story', str(story),
+                '--metadata-preflight', str(preflight),
                 '--approved',
             ]
             original_req = publish_youtube.req
@@ -368,7 +776,7 @@ class YouTubePlaylistTests(unittest.TestCase):
             )
             try:
                 with mock.patch.object(sys, 'argv', argv):
-                    with self.assertRaisesRegex(SystemExit, 'cover hash'):
+                    with self.assertRaisesRegex(SystemExit, 'configuration is incomplete'):
                         publish_youtube.main()
             finally:
                 publish_youtube.req = original_req
@@ -390,8 +798,22 @@ class YouTubePlaylistTests(unittest.TestCase):
                 return {'items': [{'id': 'pl', 'snippet': {'title': 'Лягушка-путешественница'}}]}
             if path == '/videos':
                 return {'items': [{
-                    'snippet': {'title': 'T', 'description': 'D', 'tags': ['tag']},
-                    'status': {'privacyStatus': 'private', 'uploadStatus': 'processed'},
+                    'snippet': {
+                        'title': 'T',
+                        'description': 'D',
+                        'tags': ['tag'],
+                        'categoryId': '19',
+                        'defaultLanguage': 'ru',
+                    },
+                    'status': {
+                        'privacyStatus': 'private',
+                        'uploadStatus': 'processed',
+                        'selfDeclaredMadeForKids': False,
+                        'containsSyntheticMedia': False,
+                        'embeddable': True,
+                        'license': 'youtube',
+                        'publicStatsViewable': True,
+                    },
                     'processingDetails': {'processingStatus': 'succeeded'},
                 }]}
             raise AssertionError(f'unexpected api_json: {path}')
@@ -401,8 +823,8 @@ class YouTubePlaylistTests(unittest.TestCase):
             if 'oauth2.googleapis.com/token' in url:
                 return mock.Mock(read=lambda: json.dumps({'access_token': 'tok'}).encode())
             if 'uploadType=resumable' in url:
-                return mock.Mock(headers={'Location': 'https://upload.example/resume'})
-            if url == 'https://upload.example/resume':
+                return mock.Mock(headers={'Location': 'https://upload.youtube.com/resume'})
+            if url == 'https://upload.youtube.com/resume':
                 return mock.Mock(read=lambda: json.dumps({'id': 'vid-abc'}).encode())
             if 'thumbnails/set' in url:
                 raise RuntimeError('thumbnail upload failed')
@@ -421,24 +843,25 @@ class YouTubePlaylistTests(unittest.TestCase):
             report.write_text(json.dumps(_make_verification_report(
                 video.read_bytes(), cover.read_bytes(),
             )), encoding='utf-8')
+            story, preflight = _write_approved_preflight(root)
 
             argv = [
                 'publish_youtube.py',
-                '--video', str(video),
-                '--cover', str(cover),
-                '--title-file', str(root / 'title.txt'),
-                '--description-file', str(root / 'description.txt'),
-                '--tags-file', str(root / 'tags.txt'),
-                '--verification', str(report),
-                '--audience', 'contacts',
+                '--story', str(story),
+                '--metadata-preflight', str(preflight),
                 '--approved',
             ]
 
             original_api = publish_youtube.api_json
             original_req = publish_youtube.req
             original_creds = publish_youtube.legacy_environment_credentials
+            original_frame_gate = publish_youtube.verify_four_frame_cover_bytes
             publish_youtube.api_json = fake_api_json
             publish_youtube.req = fake_req
+            publish_youtube.verify_four_frame_cover_bytes = lambda _video: {
+                'cover_frames': 4, 'first_live_frame': 4,
+                'cover_ssim': [1.0, 1.0, 1.0], 'first_live_ssim': 0.0,
+            }
             publish_youtube.legacy_environment_credentials = lambda environ=None: {
                 'YOUTUBE_CLIENT_ID': 'id',
                 'YOUTUBE_CLIENT_SECRET': 'secret',
@@ -452,6 +875,7 @@ class YouTubePlaylistTests(unittest.TestCase):
                 publish_youtube.api_json = original_api
                 publish_youtube.req = original_req
                 publish_youtube.legacy_environment_credentials = original_creds
+                publish_youtube.verify_four_frame_cover_bytes = original_frame_gate
 
             payload = json.loads(ctx.exception.args[0])
             self.assertTrue(payload['video_uploaded'])
@@ -469,6 +893,69 @@ class YouTubePlaylistTests(unittest.TestCase):
                 if entry[0] == 'req' and 'uploadType=resumable' in entry[1]
             ]
             self.assertEqual(len(resumable_starts), 1)
+    def test_ambiguous_insert_failure_blocks_blind_retry(self):
+        import urllib.error
+        import publish_youtube
+
+        calls = []
+
+        def fake_api_json(path, token, params=None, data=None, method=None):
+            if path == '/channels':
+                return {'items': [{'id': 'ch', 'snippet': {'title': 'Ch'}}]}
+            if path == '/playlists':
+                return {'items': [{'id': 'pl', 'snippet': {'title': 'Лягушка-путешественница'}}]}
+            raise AssertionError(f'unexpected api_json: {path}')
+
+        def fake_req(url, data=None, headers=None, method=None):
+            calls.append(url)
+            if 'oauth2.googleapis.com/token' in url:
+                return mock.Mock(read=lambda: json.dumps({'access_token': 'tok'}).encode())
+            if 'uploadType=resumable' in url:
+                raise urllib.error.URLError('response lost')
+            raise AssertionError(f'unexpected req: {url}')
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            video = root / 'video.mp4'
+            cover = root / 'cover.jpg'
+            video.write_bytes(b'video')
+            cover.write_bytes(MINIMAL_JPEG)
+            (root / 'title.txt').write_text('T', encoding='utf-8')
+            (root / 'description.txt').write_text('D', encoding='utf-8')
+            (root / 'tags.txt').write_text('tag\n', encoding='utf-8')
+            (root / 'verification.json').write_text(json.dumps(
+                _make_verification_report(video.read_bytes(), cover.read_bytes())
+            ), encoding='utf-8')
+            story, preflight = _write_approved_preflight(root)
+            argv = [
+                'publish_youtube.py', '--story', str(story),
+                '--metadata-preflight', str(preflight), '--approved',
+            ]
+            patches = (
+                mock.patch.object(publish_youtube, 'api_json', fake_api_json),
+                mock.patch.object(publish_youtube, 'req', fake_req),
+                mock.patch.object(publish_youtube, 'legacy_environment_credentials', lambda environ=None: {
+                    'YOUTUBE_CLIENT_ID': 'id', 'YOUTUBE_CLIENT_SECRET': 'secret',
+                    'YOUTUBE_REFRESH_TOKEN': 'refresh',
+                }),
+                mock.patch.object(publish_youtube, 'verify_four_frame_cover_bytes', lambda _video: {
+                    'cover_frames': 4, 'first_live_frame': 4,
+                    'cover_ssim': [1.0, 1.0, 1.0], 'first_live_ssim': 0.0,
+                }),
+            )
+            with patches[0], patches[1], patches[2], patches[3]:
+                with mock.patch.object(sys, 'argv', argv):
+                    with self.assertRaises(SystemExit) as first:
+                        publish_youtube.main()
+                payload = json.loads(first.exception.args[0])
+                self.assertTrue(payload['do_not_retry'])
+                self.assertEqual(payload['video_upload_state'], 'ambiguous')
+                self.assertTrue(Path(payload['upload_attempt_record']).is_file())
+                with mock.patch.object(sys, 'argv', argv):
+                    with self.assertRaisesRegex(SystemExit, 'attempt already exists'):
+                        publish_youtube.main()
+            resumable = [url for url in calls if 'uploadType=resumable' in url]
+            self.assertEqual(len(resumable), 1)
 
 
 if __name__ == '__main__':

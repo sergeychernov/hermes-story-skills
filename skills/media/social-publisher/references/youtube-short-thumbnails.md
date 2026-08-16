@@ -19,7 +19,7 @@ The API publishing path requires the wide API thumbnail. Opening-frame and Short
 - To change the actual Shorts-grid cover after upload, use the owner-facing YouTube/YouTube Studio mobile flow on the Short (`⋮` → edit → edit thumbnail/cover) and either choose the approved custom vertical image when offered or select an in-video frame. Verify the channel's Shorts tab on the real device afterward; if the client offers no post-upload cover control, a replacement upload with the approved cover selected during upload is the last resort and requires new publication approval.
 - **API acceptance is not visual verification.** YouTube may show different renditions on the channel/search surfaces and in the vertical Shorts UI.
 - A cache-busted `maxresdefault.jpg` is a useful check for the conventional 16:9 thumbnail surface, but it does **not** prove what the user sees as the vertical Short cover.
-- For Sergey's API publication workflow, the required master is the native wide **3840×2160 (16:9)** `youtube_api_thumbnail`. Portrait covers are separate optional surfaces and must never be routed to `thumbnails.set`.
+- For this API publication workflow, the required master is the native wide **3840×2160 (16:9)** `youtube_api_thumbnail`. Portrait covers are separate optional surfaces and must never be routed to `thumbnails.set`.
 - If YouTube's client displays a gray frame or an unexpected in-video frame after an API upload, treat that user/device observation as authoritative for the Shorts surface. Do not insist that the CDN response proves the cover is correct.
 
 ## Design workflow
@@ -34,7 +34,7 @@ The API publishing path requires the wide API thumbnail. Opening-frame and Short
 
 ## First-frame safeguard
 
-Before publication, decode and inspect the exact encoded frames at `0.000`, `0.033`, `0.10`, `0.25`, and `0.50` seconds. Never let a Short begin on black/gray/transparent video or a fade-in from blank: some Shorts clients may use or momentarily expose that first decoded frame as the grid cover/placeholder. Put the explicitly approved vertical cover into the video itself for roughly `0.5–0.8` seconds from frame zero, then transition quickly into the opening scene; apply any fade only between visible images, never from blank. Verify the first frame again on the final upload candidate. Changing encoded first frames of an already published Short requires a replacement upload and therefore fresh package/cover/publication approval.
+Before publication, decode and inspect exact encoded frames `0`, `1`, `2`, `3`, and `4`. Never let a Short begin on black/gray/transparent video or a fade-in from blank. For this YouTube Shorts publication path, frames `0..3` must be the same approved vertical safe-zone-compliant cover and frame `4` must be the first live frame; one-frame and longer cover intervals are invalid. The publisher rechecks this boundary from the immutable video snapshot before OAuth. Apply any fade only after frame `4` and never from blank. Changing encoded first frames of an already published Short requires a replacement upload and therefore fresh package/cover/publication approval.
 
 ## Upload pattern
 

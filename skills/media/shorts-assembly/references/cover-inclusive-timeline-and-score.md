@@ -6,13 +6,13 @@ Use this for a YouTube Short whose opening cover must control platform previews.
 
 1. Preserve originals; create canonical normalized scene derivatives at ingest.
 2. Assemble a zero-origin CFR master.
-3. Render the visual timeline first: cover (`24` frames / `0.8 s` at 30 fps) + master in one filter graph.
-4. Verify the cover-inclusive video before composing music:
+3. Render the YouTube Shorts publication timeline with exactly four cover frames at 30 fps. Frames `0..3` are the same approved cover and frame `4` is the first live frame. Prefer replacing the old opening frames when preserving a locked timeline; if inserting frames changes soundtrack timing, obtain a new soundtrack approval.
+4. Verify the cover-inclusive video before composing or reusing music:
    - `start_time=0`;
    - `r_frame_rate=avg_frame_rate=30/1`;
-   - expected frame count = cover frames + master frames;
+   - exact expected total frame count;
    - full decode succeeds;
-   - inspect cover at 0.000, 0.033, 0.100, 0.250, 0.500, final cover frame; inspect first live frame at 0.800.
+   - inspect decoded frames `0`, `1`, `2`, `3`, and `4`; require high SSIM among `0..3` and require frame `4` to differ from the cover.
 5. Hand the verified frame contract to `story-soundtrack`. That owner creates a new revision from `t=0`, treats the cover as an explicit routing window, and returns a hash-bound approved mix. Do not delay/reuse a pre-cover mix or compose an ident inside `shorts-assembly`.
 
 ## Timeline pitfalls

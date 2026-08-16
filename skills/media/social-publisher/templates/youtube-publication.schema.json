@@ -1,0 +1,149 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.schemas/social-publisher/youtube-publication.schema.json",
+  "title": "YouTube publication target configuration",
+  "type": "object",
+  "x-story-pointer": "/publication/targets/youtube",
+  "additionalProperties": false,
+  "properties": {
+    "status": {"type": "string", "enum": ["draft", "prepared", "approved", "published", "deleted"]},
+    "channel_id": {"type": "string", "minLength": 1},
+    "visibility": {"type": "string", "enum": ["private", "public", "unlisted"]},
+    "video_id": {"type": "string", "minLength": 1},
+    "record": {"$ref": "#/$defs/relativePath"},
+    "channel_key": {
+      "type": "string", "minLength": 1,
+      "x-user-confirmation": true,
+      "x-question": {"kind": "choice", "ru": "На какой зарегистрированный YouTube-канал публиковать?", "en": "Which registered YouTube channel should receive this video?"}
+    },
+    "audience": {
+      "type": "string", "enum": ["contacts", "everyone", "link"],
+      "x-user-confirmation": true,
+      "x-question": {"kind": "choice", "ru": "Кому будет доступно видео?", "en": "Who should be able to watch the video?"}
+    },
+    "playlist_title": {
+      "type": "string", "minLength": 1,
+      "x-user-confirmation": true,
+      "x-question": {"kind": "choice", "ru": "В какой плейлист добавить видео?", "en": "Which exact owned playlist should contain the video?"}
+    },
+    "video_path": {
+      "$ref": "#/$defs/relativePath",
+      "x-file-role": "video",
+      "x-auto-resolve": {
+        "kind": "json-report-value",
+        "glob": "**/*.mp4.report.json",
+        "value_pointer": "/artifact",
+        "hash_pointer": "/video/sha256",
+        "predicates": [
+          {"pointer": "/status", "enum": ["review-ready", "verified"]},
+          {"pointer": "/video/full_decode", "equals": "passed"},
+          {"pointer": "/timeline/cover_frames", "equals": 4},
+          {"pointer": "/timeline/first_live_frame", "equals": 4}
+        ]
+      }
+    },
+    "cover_path": {
+      "$ref": "#/$defs/relativePath",
+      "x-file-role": "cover",
+      "x-auto-resolve": {
+        "kind": "json-report-value",
+        "globs": ["**/*.jpg.report.json", "**/*.png.report.json"],
+        "value_pointer": "/output/path",
+        "hash_pointer": "/output/sha256",
+        "predicates": [
+          {"pointer": "/platform_contract/platform", "equals": "youtube"},
+          {"pointer": "/platform_contract/surface", "equals": "standard_api_thumbnail"},
+          {"pointer": "/visual_review", "equals": "user-approved"}
+        ]
+      }
+    },
+    "title_file": {
+      "$ref": "#/$defs/relativePath",
+      "x-file-role": "title_file",
+      "x-auto-resolve": {"kind": "exact-file", "candidates": ["youtube-title.txt"]}
+    },
+    "description_file": {
+      "$ref": "#/$defs/relativePath",
+      "x-file-role": "description_file",
+      "x-auto-resolve": {"kind": "exact-file", "candidates": ["youtube-description.txt"]}
+    },
+    "tags_file": {
+      "$ref": "#/$defs/relativePath",
+      "x-file-role": "tags_file",
+      "x-auto-resolve": {"kind": "exact-file", "candidates": ["youtube-tags.txt"]}
+    },
+    "verification_file": {
+      "$ref": "#/$defs/relativePath",
+      "x-file-role": "verification_file",
+      "x-auto-resolve": {"kind": "provenance-report", "source_field": "video_path"}
+    },
+    "cover_verification_file": {
+      "$ref": "#/$defs/relativePath",
+      "x-file-role": "cover_verification_file",
+      "x-auto-resolve": {"kind": "provenance-report", "source_field": "cover_path"}
+    },
+    "category_id": {"type": "string", "pattern": "^[0-9]+$", "default": "19"},
+    "default_language": {"type": "string", "pattern": "^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$", "default": "ru"},
+    "made_for_kids": {
+      "type": "boolean",
+      "x-user-confirmation": true,
+      "x-question": {"kind": "boolean", "ru": "Видео предназначено специально для детей по правилам YouTube?", "en": "Is this video directed to children under YouTube rules?"}
+    },
+    "contains_synthetic_media": {
+      "type": "boolean",
+      "x-user-confirmation": true,
+      "x-question": {"kind": "boolean", "ru": "Нужна отметка о реалистичном изменённом или синтетическом контенте?", "en": "Does this require realistic altered or synthetic media disclosure?"}
+    },
+    "notify_subscribers": {
+      "type": "boolean",
+      "x-user-confirmation": true,
+      "x-question": {"kind": "boolean", "ru": "Уведомить подписчиков канала о публикации?", "en": "Should YouTube notify channel subscribers?"}
+    },
+    "recording_date_decision": {
+      "type": "string", "enum": ["set", "omit"],
+      "x-user-confirmation": true,
+      "x-question": {"kind": "choice", "ru": "Указать фактическую дату съёмки или явно пропустить?", "en": "Set the actual recording date or explicitly omit it?"}
+    },
+    "recording_date": {
+      "type": "string", "format": "date",
+      "x-user-confirmation": true,
+      "x-question": {"kind": "text", "ru": "Укажите дату съёмки: YYYY-MM-DD либо относительно текущей даты — сегодня, вчера, позавчера или день недели.", "en": "Provide the recording date as YYYY-MM-DD or relative to today."}
+    },
+    "location_decision": {
+      "type": "string", "enum": ["description", "omit"],
+      "x-user-confirmation": true,
+      "x-question": {"kind": "choice", "ru": "Добавить текстовую локацию в описание или явно пропустить?", "en": "Add a textual location to the description or explicitly omit it?"}
+    },
+    "location_text": {
+      "type": "string", "minLength": 1,
+      "x-user-confirmation": true,
+      "x-question": {"kind": "text", "ru": "Какой точный текст локации должен быть в описании?", "en": "What exact location text should appear in the description?"}
+    },
+    "embeddable": {"type": "boolean", "default": true},
+    "license": {"type": "string", "enum": ["youtube", "creativeCommon"], "default": "youtube"},
+    "public_stats_viewable": {"type": "boolean", "default": true}
+  },
+  "required": [
+    "channel_key", "audience", "playlist_title",
+    "video_path", "cover_path", "title_file", "description_file", "tags_file", "verification_file", "cover_verification_file",
+    "category_id", "default_language", "made_for_kids", "contains_synthetic_media", "notify_subscribers",
+    "recording_date_decision", "location_decision", "embeddable", "license", "public_stats_viewable"
+  ],
+  "allOf": [
+    {
+      "if": {"properties": {"recording_date_decision": {"const": "set"}}, "required": ["recording_date_decision"]},
+      "then": {"required": ["recording_date"]}
+    },
+    {
+      "if": {"properties": {"location_decision": {"const": "description"}}, "required": ["location_decision"]},
+      "then": {"required": ["location_text"]}
+    }
+  ],
+  "$defs": {
+    "relativePath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+"
+    }
+  }
+}

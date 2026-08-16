@@ -14,12 +14,13 @@ Use this when inserting an approved static-cover-collage artifact into a vertica
 
 ## First-frame safeguard
 
-Two modes — pick based on how the platform shows previews:
+Pick the mode by target surface:
 
-- **Intro mode** (YouTube-style): keep the approved cover visible from frame zero for about 0.5–0.8 s. Verify exact decoded frames at 0.000, 0.033, 0.100, 0.250, and 0.500 s; verify the transition to live video immediately after the cover interval. No first-frame fade from black. If soundtrack timing changes, hand the normalized cover-inclusive frame contract to `story-soundtrack`; do not compose, prepend an ident or alter an approved mix here.
+- **YouTube Shorts publication mode:** render the approved `youtube_shorts_cover` as exactly four frames at 30 fps. Frames `0..3` must show the same approved pixels and frame `4` must be live footage. The cover report must prove that every critical text box fits the central YouTube-Shorts/Telegram-OG crop-safe rectangle. One-frame and longer cover intervals are invalid for this publication path. If soundtrack timing changes, hand the normalized cover-inclusive frame contract to `story-soundtrack`; do not retime approved audio here.
+- **Visible intro — separate edit:** a requested 0.5–0.8 s intro is not a YouTube Shorts publication candidate under this contract. Build and approve it as a different timeline; do not label its report `cover_frames=4`.
+- **Single-frame mode — non-YouTube only:** one frame may be used for an explicitly requested Telegram/Instagram first-frame workflow. Never use it for Sergey's YouTube Shorts publication masters. If audio alignment requires leading silence, request a new approved soundtrack revision; never prepend or retime approved audio inside this skill.
 
-  **Audio-first approval gate:** `story-soundtrack` owns audio-only rendering, gain revisions, encoded AAC QA and approval. `shorts-assembly` waits for its new hash-bound handoff before muxing or publishing.
-- **Single-frame mode** («обложка одним фреймом», Telegram/Instagram-style previews): the cover is exactly ONE video frame (1/fps s — e.g. 1/30 s at 30 fps), just so the platform picks it up as the preview. Verify frame 0 (t=0.000) is the full cover and frame 1 (t≈0.034 s) is already live footage. If audio alignment requires one frame of leading silence, request a new approved soundtrack revision; never prepend or retime approved audio inside this skill.
+**Audio-first approval gate:** `story-soundtrack` owns audio-only rendering, gain revisions, encoded AAC QA and approval. `shorts-assembly` waits for its new hash-bound handoff before muxing or publishing.
 
 ## Fast insertion without re-encoding the whole film
 
@@ -58,5 +59,5 @@ Pitfalls observed with copy concat:
 - **Frame-count identity**: `ffprobe -count_frames -show_entries stream=nb_read_frames` must equal master frames + inserted frames. Any mismatch means a frame was silently dropped — rebuild, do not deliver.
 - Full decode with `ffmpeg -v error -i upload-candidate.mp4 -f null -`. This is necessary but never substitutes for the packet-timeline gate.
 - Reject any output with non-monotonic DTS, implausible `r_frame_rate`, or decode errors.
-- Build a first-frame contact sheet covering the cover interval (intro mode: 0.000–0.750 s; single-frame mode: exactly 0.000 and ≈0.034 s) and inspect it visually.
+- Build a first-frame contact sheet for exact frames `0`, `1`, `2`, `3`, and `4`. Require frames `0..3` to show the same approved cover, require frame `4` to be live footage, and reject black/gray lead-in or any longer cover interval.
 - Recompute SHA-256 and create a fresh package verification record; inserting a cover changes the upload media hash.

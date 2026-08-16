@@ -58,6 +58,9 @@ class Tests(unittest.TestCase):
   self.assertEqual((PLATFORM_CONTRACTS["youtube_api_thumbnail"]["width"],PLATFORM_CONTRACTS["youtube_api_thumbnail"]["height"]),(3840,2160))
   self.assertEqual(PLATFORM_CONTRACTS["youtube_api_thumbnail"]["surface"],"standard_api_thumbnail")
   self.assertEqual((PLATFORM_CONTRACTS["youtube_shorts_cover"]["width"],PLATFORM_CONTRACTS["youtube_shorts_cover"]["height"]),(2160,3840))
+  self.assertEqual(PLATFORM_CONTRACTS["youtube_shorts_cover"]["text_safe_rect"],[0.08,0.29,0.72,0.42])
+  self.assertEqual(platform_contract_for("youtube_shorts_cover",2160,3840)["text_safe_rect_pixels"],{"x":173,"y":1114,"width":1555,"height":1613})
+  self.assertEqual(PLATFORM_CONTRACTS["youtube_shorts_cover"]["safe_zone_provenance"],"local_youtube_shorts_ui_and_telegram_og_center_crop_policy")
   self.assertEqual((PLATFORM_CONTRACTS["instagram_reels_cover"]["width"],PLATFORM_CONTRACTS["instagram_reels_cover"]["height"]),(420,654))
   self.assertEqual((PLATFORM_CONTRACTS["telegram_story_cover"]["width"],PLATFORM_CONTRACTS["telegram_story_cover"]["height"]),(1080,1920))
   self.assertTrue(PLATFORM_CONTRACTS["youtube_shorts_cover"]["separate_cover_upload"])
@@ -77,6 +80,14 @@ class Tests(unittest.TestCase):
    self.assertEqual(r["platform_contract"]["platform"],"instagram")
    safe=r["platform_contract"]["text_safe_rect_pixels"]
    for box in r["text_bounding_boxes"]:
+    self.assertGreaterEqual(box["x0"],safe["x"])
+    self.assertGreaterEqual(box["y0"],safe["y"])
+    self.assertLessEqual(box["x1"],safe["x"]+safe["width"])
+    self.assertLessEqual(box["y1"],safe["y"]+safe["height"])
+   shorts=platform_spec("youtube_shorts_cover",2160,3840);shorts["output"]="out/youtube-shorts.jpg"
+   rendered=render_collage(root,shorts);safe=rendered["platform_contract"]["text_safe_rect_pixels"]
+   self.assertEqual(safe,{"x":173,"y":1114,"width":1555,"height":1613})
+   for box in rendered["text_bounding_boxes"]:
     self.assertGreaterEqual(box["x0"],safe["x"])
     self.assertGreaterEqual(box["y0"],safe["y"])
     self.assertLessEqual(box["x1"],safe["x"]+safe["width"])
