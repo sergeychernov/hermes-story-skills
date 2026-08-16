@@ -55,7 +55,7 @@
       "minimum": 0.3,
       "maximum": 0.5,
       "default": 0.4,
-      "description": "Overlap fraction between adjacent overlap_stack cards (z-order neighbors and cross-row stacks) where expanded rects intersect (4-6 sources)."
+      "description": "Overlap fraction between adjacent overlap_stack cards (z-order neighbors and cross-row stacks) where expanded rects intersect (3-6 sources)."
     },
     "base_layout": {
       "enum": [
@@ -74,7 +74,7 @@
     },
     "base_cells": {
       "type": "array",
-      "minItems": 4,
+      "minItems": 3,
       "maxItems": 6,
       "description": "Optional explicit overlap_stack anchors in source order. Each entry is [x,y,w,h] with normalized fractions in [0,1] (x/w use canvas width, y/h use canvas height) or pixel coordinates when any value exceeds 1. Must tile the canvas exactly and match source count; cannot be combined with explicit base_layout.",
       "items": {
@@ -129,6 +129,12 @@
       "type": "integer",
       "description": "Deterministic RNG seed for per-panel signed start angles. Required when rotation_enabled is true."
     },
+    "paper_edge": {"type": "boolean", "default": false},
+    "paper_edge_seed": {"type": "integer"},
+    "paper_edge_variation_px": {"type": "integer", "minimum": 1, "maximum": 8, "default": 3},
+    "paper_edge_inner_border_px": {"type": "integer", "minimum": 1, "maximum": 24, "default": 1},
+    "paper_edge_inner_overlap_px": {"type": "integer", "minimum": 0, "maximum": 8, "default": 0},
+    "photo_corner_radius_px": {"type": "integer", "minimum": 0, "maximum": 8, "default": 0},
     "animation": {"enum": ["auto", "fly_in", "row_reveal", "row_reveal_ascending", "hero_last", "none"], "default": "auto"},
     "gutter": {"type": "integer", "minimum": 0, "maximum": 24, "default": 6},
     "title": {

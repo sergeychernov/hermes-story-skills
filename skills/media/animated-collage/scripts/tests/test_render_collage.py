@@ -71,6 +71,42 @@ class LayoutTests(unittest.TestCase):
     def sources(self, n: int, safe: tuple[int, ...] = ()):
         return [{"path": f"photos/{i}.jpg", "title_safe": i in safe} for i in range(n)]
 
+    def test_cli_error_payload_preserves_typed_layout_outcomes(self):
+        for sequence, error_type in (
+            ("ppllppl", "UnsupportedLayoutSequenceError"),
+            ("pppppp", "AmbiguousLayoutSequenceError"),
+        ):
+            try:
+                mod._layout_selector.select_layout(sequence)
+            except mod.LayoutSequenceError as exc:
+                payload = mod.error_payload(exc)
+            else:
+                self.fail(f"expected typed selection error for {sequence}")
+            self.assertEqual(payload["error_type"], error_type)
+            self.assertEqual(payload["sequence"], sequence)
+            self.assertIn("candidates", payload)
+        self.assertEqual(len(mod.error_payload(mod.AmbiguousLayoutSequenceError("pppppp", ["a", "b"]))["candidates"]), 2)
+
+    def test_schema_matches_supported_three_card_and_paper_edge_contract(self):
+        schema_path = MODULE_PATH.parents[1] / "templates" / "collage-spec.schema.json"
+        schema = json.loads(schema_path.read_text(encoding="utf-8"))
+        properties = schema["properties"]
+        self.assertEqual(properties["base_cells"]["minItems"], 3)
+        for name in (
+            "paper_edge",
+            "paper_edge_seed",
+            "paper_edge_variation_px",
+            "paper_edge_inner_border_px",
+            "paper_edge_inner_overlap_px",
+            "photo_corner_radius_px",
+        ):
+            self.assertIn(name, properties)
+
+    def test_title_textfile_uses_fixed_temporary_directory_not_user_path(self):
+        source = MODULE_PATH.read_text(encoding="utf-8")
+        self.assertIn('TemporaryDirectory(prefix="animated-collage-title-", dir="/tmp")', source)
+        self.assertNotIn('title_file = work / "title.txt"', source)
+
     def test_actual_source_files_produce_orientation_sequence(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -159,15 +195,39 @@ class LayoutTests(unittest.TestCase):
         starts = [entry[0] for entry in schedule]
         self.assertGreater(starts[0], starts[-1])
 
-    def test_six_images_require_the_existing_bottom_source_to_be_title_safe(self):
+    def test_six_images_require_the_actual_title_zone_source_to_be_title_safe(self):
         name, order = mod.choose_layout(
-            6, self.sources(6, (5,)), "Title", "auto", orientation_sequence="ppppll"
+            6, self.sources(6, (4,)), "Title", "auto", orientation_sequence="ppppll"
         )
         self.assertEqual(name, "2+2+1+1")
         self.assertEqual(order, list(range(6)))
 
+    def test_title_zone_indices_follow_the_72_percent_boundary(self):
+        self.assertEqual(mod.title_zone_source_indices("2+2+1+1", 1080, 1920), [4])
+        self.assertEqual(mod.title_zone_source_indices("portrait-pairs-descending", 1080, 1920), [4, 5])
+        self.assertEqual(mod.title_zone_source_indices("portrait-triples-descending", 1080, 1920), [3, 4, 5])
+
+    def test_portrait_triples_title_requires_existing_final_three_sources(self):
+        with self.assertRaisesRegex(ValueError, "title-zone row"):
+            mod.choose_layout(
+                6,
+                self.sources(6, (4, 5)),
+                "Title",
+                "portrait-triples-descending",
+                orientation_sequence="pppppp",
+            )
+        name, order = mod.choose_layout(
+            6,
+            self.sources(6, (3, 4, 5)),
+            "Title",
+            "portrait-triples-descending",
+            orientation_sequence="pppppp",
+        )
+        self.assertEqual(name, "portrait-triples-descending")
+        self.assertEqual(order, list(range(6)))
+
     def test_title_safe_marker_elsewhere_does_not_reorder_sources(self):
-        with self.assertRaisesRegex(ValueError, "existing bottom row"):
+        with self.assertRaisesRegex(ValueError, "title-zone row"):
             mod.choose_layout(
                 6, self.sources(6, (1,)), "Title", "auto", orientation_sequence="ppppll"
             )

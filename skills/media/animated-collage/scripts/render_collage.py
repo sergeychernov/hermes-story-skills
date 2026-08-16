@@ -20,6 +20,7 @@ import layout_selector as _layout_selector
 from layout_selector import (
     AmbiguousLayoutSequenceError,
     IncompatibleLayoutSequenceError,
+    LayoutSequenceError,
     UnsupportedLayoutSequenceError,
 )
 
@@ -677,9 +678,8 @@ def choose_layout(
         name = "overlap_stack"
     elif requested != "auto":
         if orientation_sequence is None:
-            name = requested
-        else:
-            name = _layout_selector.select_layout(orientation_sequence, requested=requested)
+            raise ValueError("explicit tiled layout requires an orientation_sequence")
+        name = _layout_selector.select_layout(orientation_sequence, requested=requested)
     else:
         if orientation_sequence is None:
             raise ValueError("layout auto requires an orientation_sequence")
@@ -698,15 +698,25 @@ def choose_layout(
                     "overlap_stack title requires the existing final source to have title_safe=true; sources are not reordered"
                 )
         else:
-            last_cells = len(_rows_for_layout(name, 1080, 1920)[-1])
-            bottom = set(range(count - last_cells, count))
-            unsafe_bottom = sorted(bottom - set(safe))
-            if unsafe_bottom:
+            title_zone = set(title_zone_source_indices(name, 1080, 1920))
+            unsafe_title_zone = sorted(title_zone - set(safe))
+            if unsafe_title_zone:
                 raise ValueError(
-                    f"layout {name} needs title_safe=true on every source already in its existing bottom row; "
-                    f"unsafe source indices: {unsafe_bottom}; sources are not reordered"
+                    f"layout {name} needs title_safe=true on every source intersecting its title-zone row; "
+                    f"unsafe source indices: {unsafe_title_zone}; sources are not reordered"
                 )
     return name, order
+
+
+def title_zone_source_indices(name: str, width: int, height: int) -> list[int]:
+    """Panel indices in the row containing the title box's fixed 72% bottom edge."""
+    target_y = max(0, math.ceil(height * 0.72) - 1)
+    offset = 0
+    for row in _rows_for_layout(name, width, height):
+        if any(y <= target_y < y + h for _, y, _, h in row):
+            return list(range(offset, offset + len(row)))
+        offset += len(row)
+    raise ValueError(f"layout {name} has no row at title-safe boundary")
 
 
 def choose_animation(requested: str, layout: str, sources: list[dict[str, Any]]) -> str:
@@ -1300,9 +1310,11 @@ def render(root: Path, raw: dict[str, Any]) -> dict[str, Any]:
         render_cells, schedule, panel_rotations, spec["width"], spec["height"]
     )
     font = _find_font()
+    title_temp_dir: tempfile.TemporaryDirectory[str] | None = None
     title_rendered = bool(title_text and font)
     if title_rendered:
-        title_file = work / "title.txt"
+        title_temp_dir = tempfile.TemporaryDirectory(prefix="animated-collage-title-", dir="/tmp")
+        title_file = Path(title_temp_dir.name) / "title.txt"
         title_file.write_text(wrap_title(title_text, int(spec["title"]["max_chars"])), encoding="utf-8")
         align = spec["title"]["align"]
         canonical_title = style_manifest(spec["width"])
@@ -1334,6 +1346,8 @@ def render(root: Path, raw: dict[str, Any]) -> dict[str, Any]:
         temp_output.replace(output)
     finally:
         temp_output.unlink(missing_ok=True)
+        if title_temp_dir is not None:
+            title_temp_dir.cleanup()
 
     qa_times = {
         "mid_entry": max(0.05, spec["entry_seconds"] / 2),
@@ -1429,6 +1443,19 @@ def render(root: Path, raw: dict[str, Any]) -> dict[str, Any]:
     return report
 
 
+def error_payload(exc: Exception) -> dict[str, Any]:
+    error: dict[str, Any] = {
+        "schema_version": 1,
+        "status": "error",
+        "error": str(exc),
+        "error_type": type(exc).__name__,
+    }
+    if isinstance(exc, LayoutSequenceError):
+        error["sequence"] = exc.sequence
+        error["candidates"] = list(exc.candidates)
+    return error
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--root", required=True, type=Path)
@@ -1438,7 +1465,7 @@ def main() -> int:
         raw = json.loads(args.spec.read_text(encoding="utf-8"))
         report = render(args.root, raw)
     except (OSError, ValueError, json.JSONDecodeError, subprocess.CalledProcessError) as exc:
-        print(json.dumps({"schema_version": 1, "status": "error", "error": str(exc)}, ensure_ascii=False), file=sys.stderr)
+        print(json.dumps(error_payload(exc), ensure_ascii=False), file=sys.stderr)
         return 2
     print(json.dumps(report, ensure_ascii=False, indent=2))
     return 0
