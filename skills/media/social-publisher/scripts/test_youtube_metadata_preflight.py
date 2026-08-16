@@ -519,22 +519,32 @@ class YouTubeSchemaDrivenPreflightTests(unittest.TestCase):
             self.assertFalse(result["ready"])
             self.assertIn("audience", result["confirmation_required"])
 
-    def test_one_frame_cover_report_is_technical_blocker(self):
+    def test_non_exact_four_frame_reports_are_technical_blockers(self):
         from youtube_metadata_preflight import assess_story
 
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            story = write_story_package(root, complete_target())
-            report_path = root / "exports/video.mp4.report.json"
-            report = json.loads(report_path.read_text(encoding="utf-8"))
-            report["timeline"] = {"cover_frames": 1, "first_live_frame": 1}
-            report_path.write_text(json.dumps(report), encoding="utf-8")
-            result = assess_story(story, DECISIONS_SCHEMA)
-            self.assertFalse(result["ready"])
-            self.assertTrue(any(
-                blocker["field"] == "video_path"
-                for blocker in result["auto_resolution"]["blockers"]
-            ))
+        invalid_timelines = [
+            {"cover_frames": 1, "first_live_frame": 1},
+            {"cover_frames": 4, "first_live_frame": 1},
+            {"cover_frames": 24, "first_live_frame": 24},
+            None,
+        ]
+        for timeline in invalid_timelines:
+            with self.subTest(timeline=timeline), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                story = write_story_package(root, complete_target())
+                report_path = root / "exports/video.mp4.report.json"
+                report = json.loads(report_path.read_text(encoding="utf-8"))
+                if timeline is None:
+                    report.pop("timeline", None)
+                else:
+                    report["timeline"] = timeline
+                report_path.write_text(json.dumps(report), encoding="utf-8")
+                result = assess_story(story, DECISIONS_SCHEMA)
+                self.assertFalse(result["ready"])
+                self.assertTrue(any(
+                    blocker["field"] == "video_path"
+                    for blocker in result["auto_resolution"]["blockers"]
+                ))
 
     def test_cli_approve_requires_explicit_flag_and_writes_private_manifest(self):
         with tempfile.TemporaryDirectory() as directory:

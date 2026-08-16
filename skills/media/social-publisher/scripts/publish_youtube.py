@@ -6,7 +6,10 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import struct
+import subprocess
+import tempfile
 import time
 import urllib.error
 import urllib.parse
@@ -34,6 +37,28 @@ AUDIENCE_TO_PRIVACY = {
 }
 
 
+def _write_new_private_json(path: Path, payload: dict) -> Path:
+    """Create a private JSON file atomically without ever replacing an existing name."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.parent / f".{path.name}.{os.getpid()}.{time.time_ns()}.tmp"
+    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+            json.dump(payload, stream, ensure_ascii=False, indent=2)
+            stream.write("\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.link(temporary, path)
+        directory = os.open(path.parent, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+    finally:
+        temporary.unlink(missing_ok=True)
+    return path
+
+
 def write_publish_record(story_path: Path, record: dict) -> Path:
     """Atomically write one immutable record named by the returned video ID."""
     video_id = str(record.get("video_id") or "")
@@ -42,20 +67,68 @@ def write_publish_record(story_path: Path, record: dict) -> Path:
         raise ValueError("invalid video_id for publish record")
     root = story_path.parent.resolve()
     path = root / f"publish-record-{video_id}.json"
-    if path.exists() or path.is_symlink():
-        raise FileExistsError(f"publish record already exists: {path.name}")
-    temporary = root / f".{path.name}.{os.getpid()}.tmp"
-    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    return _write_new_private_json(path, record)
+
+
+def refuse_existing_publication(story_path: Path, media_sha256: str) -> None:
+    for record_path in sorted(story_path.parent.glob("publish-record-*.json")):
+        if record_path.is_symlink() or not record_path.is_file():
+            continue
+        try:
+            record = json.loads(record_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            raise ValueError(f"invalid existing publish record: {record_path.name}") from None
+        if not isinstance(record, dict):
+            raise ValueError(f"invalid existing publish record: {record_path.name}")
+        if record.get("platform") == "youtube" and record.get("media_sha256") == media_sha256:
+            raise ValueError(
+                f"video bytes already have a YouTube publish record: {record_path.name}"
+            )
+
+
+def reserve_upload_attempt(
+    story_path: Path,
+    *,
+    media_sha256: str,
+    manifest_sha256: str,
+    channel_key: str,
+) -> Path:
+    identity = hashlib.sha256(
+        f"youtube\0{media_sha256}\0{channel_key}".encode("utf-8")
+    ).hexdigest()
+    path = story_path.parent.resolve() / f"youtube-upload-attempt-{identity}.json"
+    payload = {
+        "schema_version": 1,
+        "platform": "youtube",
+        "state": "upload_session_may_have_started",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "media_sha256": media_sha256,
+        "manifest_sha256": manifest_sha256,
+        "channel_key": channel_key,
+        "do_not_retry_blindly": True,
+    }
     try:
-        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
-            json.dump(record, stream, ensure_ascii=False, indent=2)
-            stream.write("\n")
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.replace(temporary, path)
-    finally:
-        temporary.unlink(missing_ok=True)
-    return path
+        return _write_new_private_json(path, payload)
+    except FileExistsError:
+        raise ValueError(
+            f"an upload attempt already exists for this approved package: {path.name}; "
+            "resolve it through YouTube API readback before any retry"
+        ) from None
+
+
+def write_upload_result(attempt_path: Path, video_id: str) -> Path:
+    return _write_new_private_json(
+        attempt_path.with_name(attempt_path.name.replace("attempt", "result", 1)),
+        {
+            "schema_version": 1,
+            "platform": "youtube",
+            "state": "video_id_returned",
+            "recorded_at": datetime.now(timezone.utc).isoformat(),
+            "video_id": video_id,
+            "attempt_record": attempt_path.name,
+            "do_not_retry_video_upload": True,
+        },
+    )
 
 
 def legacy_environment_credentials(environ=None) -> dict[str, str]:
@@ -387,6 +460,72 @@ def validate_snapshot_eligibility(
             raise ValueError(f"{report_role} snapshot hash does not prove {source_role}")
 
 
+def verify_four_frame_cover_bytes(video_bytes: bytes) -> dict[str, object]:
+    """Decode frames 0..4 and prove the four-frame Shorts cover contract."""
+    try:
+        with tempfile.TemporaryDirectory(prefix="youtube-cover-gate-") as directory:
+            root = Path(directory)
+            video = root / "snapshot.mp4"
+            video.write_bytes(video_bytes)
+            probe = subprocess.run(
+                [
+                    "ffprobe", "-v", "error", "-select_streams", "v:0",
+                    "-show_entries", "stream=width,height,r_frame_rate,avg_frame_rate,start_time",
+                    "-of", "json", str(video),
+                ],
+                check=True, capture_output=True, text=True, timeout=60,
+            )
+            streams = json.loads(probe.stdout).get("streams") or []
+            if len(streams) != 1:
+                raise ValueError("approved video snapshot must contain exactly one video stream")
+            stream = streams[0]
+            if stream.get("r_frame_rate") != "30/1" or stream.get("avg_frame_rate") != "30/1":
+                raise ValueError("approved video snapshot must be exact CFR 30/1")
+            if float(stream.get("start_time", "0")) != 0.0:
+                raise ValueError("approved video snapshot must start at video PTS zero")
+            subprocess.run(
+                [
+                    "ffmpeg", "-hide_banner", "-loglevel", "error", "-i", str(video),
+                    "-vf", r"select=lte(n\,4)", "-vsync", "0", "-frames:v", "5",
+                    str(root / "frame-%d.png"),
+                ],
+                check=True, capture_output=True, timeout=120,
+            )
+            frames = [root / f"frame-{index}.png" for index in range(1, 6)]
+            if not all(frame.is_file() for frame in frames):
+                raise ValueError("approved video snapshot has fewer than five decoded frames")
+
+            def ssim(left: Path, right: Path) -> float:
+                result = subprocess.run(
+                    [
+                        "ffmpeg", "-hide_banner", "-i", str(left), "-i", str(right),
+                        "-lavfi", "ssim", "-f", "null", "-",
+                    ],
+                    check=True, capture_output=True, text=True, timeout=60,
+                )
+                matches = re.findall(r"All:([0-9.]+)", result.stderr)
+                if not matches:
+                    raise ValueError("ffmpeg did not report SSIM for opening frames")
+                return float(matches[-1])
+
+            cover_ssim = [ssim(frames[0], frames[index]) for index in range(1, 4)]
+            first_live_ssim = ssim(frames[0], frames[4])
+            if min(cover_ssim) < 0.995:
+                raise ValueError("decoded frames 0..3 are not the same approved cover")
+            if first_live_ssim >= 0.995:
+                raise ValueError("decoded frame 4 is still the cover, not the first live frame")
+            return {
+                "cover_frames": 4,
+                "first_live_frame": 4,
+                "cover_ssim": cover_ssim,
+                "first_live_ssim": first_live_ssim,
+            }
+    except FileNotFoundError as exc:
+        raise ValueError(f"required media verifier is unavailable: {exc.filename}") from exc
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, json.JSONDecodeError) as exc:
+        raise ValueError(f"cannot verify four-frame cover from approved video bytes: {exc}") from exc
+
+
 def verify_approved_package(video: Path, cover: Path, verification: Path) -> dict[str, object]:
     if not video.is_file():
         raise ValueError(f"video is missing: {video}")
@@ -580,12 +719,21 @@ def main():
                 "location_text must appear exactly in the snapshotted description_file"
             )
         cover_mime, cover_bytes = validate_cover_bytes(snapshots["cover"])
+        timeline_evidence = verify_four_frame_cover_bytes(snapshots["video"])
+        video_sha256 = hashlib.sha256(snapshots["video"]).hexdigest()
+        refuse_existing_publication(args.story, video_sha256)
+        manifest_sha256 = hashlib.sha256(
+            json.dumps(manifest, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode(
+                "utf-8"
+            )
+        ).hexdigest()
         approved = {
             "video_bytes": snapshots["video"],
-            "video_sha256": hashlib.sha256(snapshots["video"]).hexdigest(),
+            "video_sha256": video_sha256,
             "cover_bytes": cover_bytes,
             "cover_mime": cover_mime,
             "cover_sha256": hashlib.sha256(cover_bytes).hexdigest(),
+            "timeline_evidence": timeline_evidence,
         }
     except (OSError, ValueError) as exc:
         raise SystemExit(str(exc)) from None
@@ -641,24 +789,50 @@ def main():
         "X-Upload-Content-Type": "video/mp4",
         "X-Upload-Content-Length": str(len(approved["video_bytes"])),
     }
-    start = req(
-        build_youtube_upload_url(write_parts, decisions["notify_subscribers"]),
-        body,
-        headers,
-        "POST",
-    )
-    location = start.headers["Location"]
-    result = json.load(req(
-        location,
-        approved["video_bytes"],
-        {
-            "Authorization": "Bearer " + token,
-            "Content-Type": "video/mp4",
-            "Content-Length": str(len(approved["video_bytes"])),
-        },
-        "PUT",
-    ))
-    video_id = result["id"]
+    try:
+        attempt_path = reserve_upload_attempt(
+            args.story,
+            media_sha256=approved["video_sha256"],
+            manifest_sha256=manifest_sha256,
+            channel_key=channel_key,
+        )
+    except (OSError, ValueError) as exc:
+        raise SystemExit(str(exc)) from None
+    video_id = None
+    try:
+        start = req(
+            build_youtube_upload_url(write_parts, decisions["notify_subscribers"]),
+            body,
+            headers,
+            "POST",
+        )
+        location = start.headers["Location"]
+        result = json.load(req(
+            location,
+            approved["video_bytes"],
+            {
+                "Authorization": "Bearer " + token,
+                "Content-Type": "video/mp4",
+                "Content-Length": str(len(approved["video_bytes"])),
+            },
+            "PUT",
+        ))
+        video_id = result.get("id")
+        if not isinstance(video_id, str) or not video_id:
+            raise ValueError("YouTube upload response did not contain a video ID")
+        upload_result_path = write_upload_result(attempt_path, video_id)
+    except Exception as exc:
+        safe = {
+            "ok": False,
+            "platform": "youtube",
+            "video_upload_state": "video_id_returned" if video_id else "ambiguous",
+            "video_uploaded": True if video_id else None,
+            "id": video_id,
+            "upload_attempt_record": str(attempt_path),
+            "do_not_retry": True,
+            "error_type": type(exc).__name__,
+        }
+        raise SystemExit(json.dumps(safe, ensure_ascii=False)) from None
 
     approved_metadata = {
         "title": meta["snippet"]["title"],
@@ -742,6 +916,9 @@ def main():
         "url": "https://youtu.be/" + video_id,
         "visibility": privacy,
         "media_sha256": approved["video_sha256"],
+        "upload_attempt_record": attempt_path.name,
+        "upload_result_record": upload_result_path.name,
+        "timeline_evidence": approved["timeline_evidence"],
         "processing": {
             "upload_status": "processed",
             "processing_status": readback["processing_status"],

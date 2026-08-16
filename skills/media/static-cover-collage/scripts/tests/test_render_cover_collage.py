@@ -84,6 +84,14 @@ class Tests(unittest.TestCase):
     self.assertGreaterEqual(box["y0"],safe["y"])
     self.assertLessEqual(box["x1"],safe["x"]+safe["width"])
     self.assertLessEqual(box["y1"],safe["y"]+safe["height"])
+   shorts=platform_spec("youtube_shorts_cover",2160,3840);shorts["output"]="out/youtube-shorts.jpg"
+   rendered=render_collage(root,shorts);safe=rendered["platform_contract"]["text_safe_rect_pixels"]
+   self.assertEqual(safe,{"x":173,"y":1114,"width":1555,"height":1613})
+   for box in rendered["text_bounding_boxes"]:
+    self.assertGreaterEqual(box["x0"],safe["x"])
+    self.assertGreaterEqual(box["y0"],safe["y"])
+    self.assertLessEqual(box["x1"],safe["x"]+safe["width"])
+    self.assertLessEqual(box["y1"],safe["y"]+safe["height"])
  def test_natural_composite_renders_generated_background_without_cards(self):
   with tempfile.TemporaryDirectory() as td:
    root=Path(td);(root/"generated").mkdir();Image.new("RGB",(900,1400),"#48624f").save(root/"generated/bg.png")

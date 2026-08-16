@@ -19,7 +19,7 @@ class AggregateRunnerTests(unittest.TestCase):
             fake.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
             fake.chmod(0o755)
             fake_uv = Path(td) / "uv"
-            fake_uv.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+            fake_uv.write_text("#!/bin/sh\nprintf 'UV_ARGS=%s\\n' \"$*\"\n", encoding="utf-8")
             fake_uv.chmod(0o755)
             env = os.environ.copy()
             env["PYTHON"] = str(fake)
@@ -48,6 +48,8 @@ class AggregateRunnerTests(unittest.TestCase):
         output = self.run_with_fake_python(soundtrack=False)
         self.assertIn("=== skills/media/static-cover-collage/scripts/tests ===", output)
         self.assertIn("dependency: Pillow via uv", output)
+        self.assertIn("UV_ARGS=run --with Pillow --no-project -- python -m unittest", output)
+        self.assertNotIn("UV_ARGS=run --with Pillow --no-project -- /", output)
 
 
 if __name__ == "__main__":

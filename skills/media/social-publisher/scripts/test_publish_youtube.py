@@ -26,6 +26,21 @@ def _make_verification_report(video_bytes: bytes, cover_bytes: bytes) -> dict:
     }
 
 
+def _make_opening_video(path: Path, cover_frames: int) -> bytes:
+    total_frames = max(5, cover_frames + 1)
+    pixels = 32 * 32
+    red = bytes((220, 20, 20)) * pixels
+    blue = bytes((20, 20, 220)) * pixels
+    raw = red * cover_frames + blue * (total_frames - cover_frames)
+    subprocess.run([
+        'ffmpeg', '-hide_banner', '-loglevel', 'error', '-y',
+        '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-s', '32x32', '-r', '30', '-i', '-',
+        '-frames:v', str(total_frames), '-c:v', 'libx264', '-pix_fmt', 'yuv420p',
+        '-r', '30', '-fps_mode', 'cfr', '-video_track_timescale', '90000', str(path),
+    ], input=raw, check=True, capture_output=True)
+    return path.read_bytes()
+
+
 def _write_story(root: Path, *, audience: str = "contacts") -> Path:
     story = root / "story.json"
     story.write_text(json.dumps({
@@ -116,6 +131,56 @@ class YouTubePlaylistTests(unittest.TestCase):
             self.assertEqual(path.stat().st_mode & 0o777, 0o600)
             with self.assertRaises(FileExistsError):
                 write_publish_record(story, record)
+
+    def test_upload_attempt_is_private_immutable_and_blocks_repeat(self):
+        from publish_youtube import reserve_upload_attempt, write_upload_result
+
+        with tempfile.TemporaryDirectory() as directory:
+            story = Path(directory) / 'story.json'
+            story.write_text('{}', encoding='utf-8')
+            attempt = reserve_upload_attempt(
+                story, media_sha256='a' * 64, manifest_sha256='b' * 64,
+                channel_key='current',
+            )
+            self.assertEqual(attempt.stat().st_mode & 0o777, 0o600)
+            self.assertTrue(json.loads(attempt.read_text())['do_not_retry_blindly'])
+            with self.assertRaisesRegex(ValueError, 'already exists'):
+                reserve_upload_attempt(
+                    story, media_sha256='a' * 64, manifest_sha256='c' * 64,
+                    channel_key='current',
+                )
+            result = write_upload_result(attempt, 'video-123')
+            self.assertEqual(result.stat().st_mode & 0o777, 0o600)
+            self.assertEqual(json.loads(result.read_text())['video_id'], 'video-123')
+
+    def test_existing_publish_record_blocks_same_media_hash(self):
+        from publish_youtube import refuse_existing_publication
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            story = root / 'story.json'
+            story.write_text('{}', encoding='utf-8')
+            (root / 'publish-record-old.json').write_text(json.dumps({
+                'platform': 'youtube', 'media_sha256': 'c' * 64,
+            }), encoding='utf-8')
+            with self.assertRaisesRegex(ValueError, 'already have'):
+                refuse_existing_publication(story, 'c' * 64)
+            refuse_existing_publication(story, 'd' * 64)
+
+    def test_live_media_gate_proves_exact_four_frame_cover(self):
+        from publish_youtube import verify_four_frame_cover_bytes
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            evidence = verify_four_frame_cover_bytes(
+                _make_opening_video(root / 'four.mp4', 4)
+            )
+            self.assertEqual(evidence['cover_frames'], 4)
+            self.assertEqual(evidence['first_live_frame'], 4)
+            with self.assertRaisesRegex(ValueError, 'frames 0..3'):
+                verify_four_frame_cover_bytes(_make_opening_video(root / 'one.mp4', 1))
+            with self.assertRaisesRegex(ValueError, 'frame 4 is still the cover'):
+                verify_four_frame_cover_bytes(_make_opening_video(root / 'long.mp4', 24))
 
     def test_recording_date_readback_accepts_youtube_midnight_normalization(self):
         from publish_youtube import _same_recording_date
@@ -772,8 +837,13 @@ class YouTubePlaylistTests(unittest.TestCase):
             original_api = publish_youtube.api_json
             original_req = publish_youtube.req
             original_creds = publish_youtube.legacy_environment_credentials
+            original_frame_gate = publish_youtube.verify_four_frame_cover_bytes
             publish_youtube.api_json = fake_api_json
             publish_youtube.req = fake_req
+            publish_youtube.verify_four_frame_cover_bytes = lambda _video: {
+                'cover_frames': 4, 'first_live_frame': 4,
+                'cover_ssim': [1.0, 1.0, 1.0], 'first_live_ssim': 0.0,
+            }
             publish_youtube.legacy_environment_credentials = lambda environ=None: {
                 'YOUTUBE_CLIENT_ID': 'id',
                 'YOUTUBE_CLIENT_SECRET': 'secret',
@@ -787,6 +857,7 @@ class YouTubePlaylistTests(unittest.TestCase):
                 publish_youtube.api_json = original_api
                 publish_youtube.req = original_req
                 publish_youtube.legacy_environment_credentials = original_creds
+                publish_youtube.verify_four_frame_cover_bytes = original_frame_gate
 
             payload = json.loads(ctx.exception.args[0])
             self.assertTrue(payload['video_uploaded'])
@@ -804,6 +875,69 @@ class YouTubePlaylistTests(unittest.TestCase):
                 if entry[0] == 'req' and 'uploadType=resumable' in entry[1]
             ]
             self.assertEqual(len(resumable_starts), 1)
+    def test_ambiguous_insert_failure_blocks_blind_retry(self):
+        import urllib.error
+        import publish_youtube
+
+        calls = []
+
+        def fake_api_json(path, token, params=None, data=None, method=None):
+            if path == '/channels':
+                return {'items': [{'id': 'ch', 'snippet': {'title': 'Ch'}}]}
+            if path == '/playlists':
+                return {'items': [{'id': 'pl', 'snippet': {'title': 'Лягушка-путешественница'}}]}
+            raise AssertionError(f'unexpected api_json: {path}')
+
+        def fake_req(url, data=None, headers=None, method=None):
+            calls.append(url)
+            if 'oauth2.googleapis.com/token' in url:
+                return mock.Mock(read=lambda: json.dumps({'access_token': 'tok'}).encode())
+            if 'uploadType=resumable' in url:
+                raise urllib.error.URLError('response lost')
+            raise AssertionError(f'unexpected req: {url}')
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            video = root / 'video.mp4'
+            cover = root / 'cover.jpg'
+            video.write_bytes(b'video')
+            cover.write_bytes(MINIMAL_JPEG)
+            (root / 'title.txt').write_text('T', encoding='utf-8')
+            (root / 'description.txt').write_text('D', encoding='utf-8')
+            (root / 'tags.txt').write_text('tag\n', encoding='utf-8')
+            (root / 'verification.json').write_text(json.dumps(
+                _make_verification_report(video.read_bytes(), cover.read_bytes())
+            ), encoding='utf-8')
+            story, preflight = _write_approved_preflight(root)
+            argv = [
+                'publish_youtube.py', '--story', str(story),
+                '--metadata-preflight', str(preflight), '--approved',
+            ]
+            patches = (
+                mock.patch.object(publish_youtube, 'api_json', fake_api_json),
+                mock.patch.object(publish_youtube, 'req', fake_req),
+                mock.patch.object(publish_youtube, 'legacy_environment_credentials', lambda environ=None: {
+                    'YOUTUBE_CLIENT_ID': 'id', 'YOUTUBE_CLIENT_SECRET': 'secret',
+                    'YOUTUBE_REFRESH_TOKEN': 'refresh',
+                }),
+                mock.patch.object(publish_youtube, 'verify_four_frame_cover_bytes', lambda _video: {
+                    'cover_frames': 4, 'first_live_frame': 4,
+                    'cover_ssim': [1.0, 1.0, 1.0], 'first_live_ssim': 0.0,
+                }),
+            )
+            with patches[0], patches[1], patches[2], patches[3]:
+                with mock.patch.object(sys, 'argv', argv):
+                    with self.assertRaises(SystemExit) as first:
+                        publish_youtube.main()
+                payload = json.loads(first.exception.args[0])
+                self.assertTrue(payload['do_not_retry'])
+                self.assertEqual(payload['video_upload_state'], 'ambiguous')
+                self.assertTrue(Path(payload['upload_attempt_record']).is_file())
+                with mock.patch.object(sys, 'argv', argv):
+                    with self.assertRaisesRegex(SystemExit, 'attempt already exists'):
+                        publish_youtube.main()
+            resumable = [url for url in calls if 'uploadType=resumable' in url]
+            self.assertEqual(len(resumable), 1)
 
 
 if __name__ == '__main__':

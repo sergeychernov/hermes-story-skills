@@ -34,7 +34,7 @@ for suite in "${suites[@]}"; do
       exit 1
     }
     printf 'dependency: Pillow via uv\n'
-    "$uv_bin" run --with Pillow "$python_bin" -m unittest discover -s "$suite" -p 'test_*.py' -v
+    "$uv_bin" run --with Pillow --no-project -- python -m unittest discover -s "$suite" -p 'test_*.py' -v
   else
     "$python_bin" -m unittest discover -s "$suite" -p 'test_*.py' -v
   fi

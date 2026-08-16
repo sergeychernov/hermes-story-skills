@@ -2,7 +2,7 @@
 
 Use when an existing mixed master has the correct scene timing and approved audio, but its opening cover must change without recomposing or remixing the soundtrack.
 
-For Sergey's YouTube Shorts publication masters, reject a one-frame cover. Use exactly four frames rendered from the same approved, central-crop-safe cover image at 30 fps unless Sergey explicitly requests a longer visible intro. Frames `0..3` are the cover and frame `4` is live footage. Verify visual equivalence after lossy encode rather than requiring byte-identical decoded frames.
+For Sergey's YouTube Shorts publication masters, reject every interval except exactly four frames rendered from the same approved, central-crop-safe cover image at 30 fps. Frames `0..3` are the cover and frame `4` is live footage. A longer visible intro is a separate edit and cannot carry the publication report contract. Verify visual equivalence after lossy encode rather than requiring byte-identical decoded frames.
 
 ## Source of truth
 
