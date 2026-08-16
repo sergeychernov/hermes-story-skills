@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.schemas/social-publisher/youtube-publication-preflight.schema.json",
+  "title": "Approved YouTube publication preflight manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"type": "integer", "const": 1},
+    "platform": {"type": "string", "const": "youtube"},
+    "publication_schema_hash": {"$ref": "#/$defs/sha256"},
+    "configuration_hash": {"$ref": "#/$defs/sha256"},
+    "package": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "video": {"$ref": "#/$defs/sha256"},
+        "cover": {"$ref": "#/$defs/sha256"},
+        "title_file": {"$ref": "#/$defs/sha256"},
+        "description_file": {"$ref": "#/$defs/sha256"},
+        "tags_file": {"$ref": "#/$defs/sha256"},
+        "verification_file": {"$ref": "#/$defs/sha256"},
+        "cover_verification_file": {"$ref": "#/$defs/sha256"}
+      },
+      "required": ["video", "cover", "title_file", "description_file", "tags_file", "verification_file", "cover_verification_file"]
+    },
+    "approval": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "approved": {"type": "boolean", "const": true},
+        "approved_at": {"type": "string", "format": "date-time"},
+        "note": {"type": "string", "minLength": 1}
+      },
+      "required": ["approved", "approved_at", "note"]
+    }
+  },
+  "required": ["schema_version", "platform", "publication_schema_hash", "configuration_hash", "package", "approval"],
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  }
+}

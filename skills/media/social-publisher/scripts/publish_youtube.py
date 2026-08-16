@@ -12,11 +12,16 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import zlib
+from datetime import datetime, timezone
 from pathlib import Path
 
 from youtube_channel_registry import credentials_for_channel
+from youtube_metadata_preflight import (
+    DEFAULT_MANIFEST_SCHEMA,
+    DEFAULT_SCHEMA,
+    verify_approved_manifest_snapshot,
+)
 
-DEFAULT_SHORTS_PLAYLIST = "Лягушка-путешественница"
 API = "https://www.googleapis.com/youtube/v3"
 THUMBNAIL_UPLOAD = "https://www.googleapis.com/upload/youtube/v3/thumbnails/set"
 COVER_MAX_BYTES = 2 * 1024 * 1024
@@ -29,6 +34,30 @@ AUDIENCE_TO_PRIVACY = {
 }
 
 
+def write_publish_record(story_path: Path, record: dict) -> Path:
+    """Atomically write one immutable record named by the returned video ID."""
+    video_id = str(record.get("video_id") or "")
+    allowed = "-_abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+    if not video_id or any(character not in allowed for character in video_id):
+        raise ValueError("invalid video_id for publish record")
+    root = story_path.parent.resolve()
+    path = root / f"publish-record-{video_id}.json"
+    if path.exists() or path.is_symlink():
+        raise FileExistsError(f"publish record already exists: {path.name}")
+    temporary = root / f".{path.name}.{os.getpid()}.tmp"
+    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+            json.dump(record, stream, ensure_ascii=False, indent=2)
+            stream.write("\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
+    return path
+
+
 def legacy_environment_credentials(environ=None) -> dict[str, str]:
     environ = os.environ if environ is None else environ
     names = ("YOUTUBE_CLIENT_ID", "YOUTUBE_CLIENT_SECRET", "YOUTUBE_REFRESH_TOKEN")
@@ -38,9 +67,12 @@ def legacy_environment_credentials(environ=None) -> dict[str, str]:
     return {name: str(environ[name]) for name in names}
 
 
-def read_tags(path: Path) -> list[str]:
-    """Read one accurate YouTube tag per line."""
-    tags = [line.strip() for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+def read_tags_bytes(data: bytes) -> list[str]:
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise ValueError("YouTube tags file must be UTF-8") from exc
+    tags = [line.strip() for line in text.splitlines() if line.strip()]
     tags = list(dict.fromkeys(tags))
     if not tags:
         raise ValueError("YouTube tags file is empty")
@@ -49,11 +81,23 @@ def read_tags(path: Path) -> list[str]:
     return tags
 
 
-def read_required_text(path: Path, label: str) -> str:
-    text = path.read_text(encoding="utf-8").strip()
+def read_tags(path: Path) -> list[str]:
+    """Read one accurate YouTube tag per line."""
+    return read_tags_bytes(path.read_bytes())
+
+
+def read_required_text_bytes(data: bytes, label: str) -> str:
+    try:
+        text = data.decode("utf-8").strip()
+    except UnicodeDecodeError as exc:
+        raise ValueError(f"{label} must be UTF-8") from exc
     if not text:
         raise ValueError(f"{label} must be non-empty")
     return text
+
+
+def read_required_text(path: Path, label: str) -> str:
+    return read_required_text_bytes(path.read_bytes(), label)
 
 
 def req(url, data=None, headers=None, method=None):
@@ -145,6 +189,50 @@ def privacy_for_audience(audience: str) -> str:
         raise ValueError(f"unsupported audience: {audience}") from None
 
 
+def build_youtube_api_metadata(
+    *,
+    title: str,
+    description: str,
+    tags: list[str],
+    privacy: str,
+    decisions: dict[str, object],
+) -> tuple[dict[str, object], str]:
+    """Build only officially writable YouTube video fields."""
+    metadata: dict[str, object] = {
+        "snippet": {
+            "title": title,
+            "description": description,
+            "categoryId": decisions["category_id"],
+            "defaultLanguage": decisions["default_language"],
+            "tags": tags,
+        },
+        "status": {
+            "privacyStatus": privacy,
+            "selfDeclaredMadeForKids": decisions["made_for_kids"],
+            "containsSyntheticMedia": decisions["contains_synthetic_media"],
+            "embeddable": decisions["embeddable"],
+            "license": decisions["license"],
+            "publicStatsViewable": decisions["public_stats_viewable"],
+        },
+    }
+    parts = ["snippet", "status"]
+    if decisions.get("recording_date_decision") == "set":
+        recording_date = str(decisions["recording_date"])
+        metadata["recordingDetails"] = {
+            "recordingDate": recording_date + "T00:00:00Z",
+        }
+        parts.append("recordingDetails")
+    return metadata, ",".join(parts)
+
+
+def build_youtube_upload_url(parts: str, notify_subscribers: bool) -> str:
+    return "https://www.googleapis.com/upload/youtube/v3/videos?" + urllib.parse.urlencode({
+        "uploadType": "resumable",
+        "part": parts,
+        "notifySubscribers": str(notify_subscribers).lower(),
+    })
+
+
 def file_sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
@@ -179,13 +267,7 @@ def _validate_jpeg(data: bytes) -> None:
         raise ValueError("corrupt cover image: JPEG is missing EOI marker")
 
 
-def validate_cover(path: Path) -> tuple[str, bytes]:
-    if not path.is_file():
-        raise ValueError(f"cover is missing: {path}")
-    size = path.stat().st_size
-    if size > COVER_MAX_BYTES:
-        raise ValueError("cover exceeds the 2 MiB limit")
-    data = path.read_bytes()
+def validate_cover_bytes(data: bytes) -> tuple[str, bytes]:
     if len(data) > COVER_MAX_BYTES:
         raise ValueError("cover exceeds the 2 MiB limit")
     if data.startswith(JPEG_SOI):
@@ -195,6 +277,114 @@ def validate_cover(path: Path) -> tuple[str, bytes]:
         _validate_png(data)
         return "image/png", data
     raise ValueError("unsupported cover image: must be JPEG or PNG")
+
+
+def validate_cover(path: Path) -> tuple[str, bytes]:
+    if not path.is_file():
+        raise ValueError(f"cover is missing: {path}")
+    return validate_cover_bytes(path.read_bytes())
+
+
+def snapshot_approved_artifacts(
+    manifest_source: Path | dict[str, object],
+    paths: dict[str, Path],
+) -> dict[str, bytes]:
+    if isinstance(manifest_source, Path):
+        try:
+            manifest = json.loads(manifest_source.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise ValueError(f"invalid approval manifest: {exc}") from exc
+    else:
+        manifest = manifest_source
+    package = manifest.get("package") if isinstance(manifest, dict) else None
+    if not isinstance(package, dict):
+        raise ValueError("approval manifest package must be an object")
+    if set(package) != set(paths):
+        raise ValueError("approval manifest package roles do not match resolved artifacts")
+    snapshots: dict[str, bytes] = {}
+    for role, path in paths.items():
+        data = path.read_bytes()
+        if hashlib.sha256(data).hexdigest() != package.get(role):
+            raise ValueError(f"metadata preflight {role} hash does not match snapshot")
+        snapshots[role] = data
+    return snapshots
+
+
+def require_trusted_schema(candidate: Path, trusted: Path, label: str) -> None:
+    try:
+        candidate_hash = hashlib.sha256(candidate.read_bytes()).digest()
+        trusted_hash = hashlib.sha256(trusted.read_bytes()).digest()
+    except OSError as exc:
+        raise ValueError(f"cannot read {label}: {exc}") from exc
+    if candidate_hash != trusted_hash:
+        raise ValueError(f"untrusted {label}: content differs from installed schema")
+
+
+def _snapshot_pointer(document: object, pointer: object) -> object:
+    if not isinstance(pointer, str) or not pointer.startswith("/"):
+        raise ValueError(f"invalid resolver JSON pointer: {pointer!r}")
+    current = document
+    for raw in pointer[1:].split("/"):
+        token = raw.replace("~1", "/").replace("~0", "~")
+        if not isinstance(current, dict) or token not in current:
+            raise ValueError(f"resolver JSON pointer is missing in report snapshot: {pointer}")
+        current = current[token]
+    return current
+
+
+def validate_snapshot_eligibility(
+    config: dict[str, object],
+    schema: dict[str, object],
+    snapshots: dict[str, bytes],
+) -> None:
+    properties = schema.get("properties")
+    if not isinstance(properties, dict):
+        raise ValueError("publication schema properties must be an object")
+    provenance_fields: dict[str, tuple[str, str]] = {}
+    for field, raw_schema in properties.items():
+        if not isinstance(raw_schema, dict):
+            continue
+        rule = raw_schema.get("x-auto-resolve")
+        role = raw_schema.get("x-file-role")
+        if isinstance(rule, dict) and rule.get("kind") == "provenance-report":
+            source = rule.get("source_field")
+            if not isinstance(source, str) or not isinstance(role, str):
+                raise ValueError(f"invalid provenance resolver for {field}")
+            provenance_fields[source] = (field, role)
+    for field, raw_schema in properties.items():
+        if not isinstance(raw_schema, dict):
+            continue
+        rule = raw_schema.get("x-auto-resolve")
+        source_role = raw_schema.get("x-file-role")
+        if not isinstance(rule, dict) or rule.get("kind") != "json-report-value":
+            continue
+        if not isinstance(source_role, str) or field not in provenance_fields:
+            raise ValueError(f"report-backed resolver lacks snapshot roles: {field}")
+        _report_field, report_role = provenance_fields[field]
+        try:
+            report = json.loads(snapshots[report_role].decode("utf-8"))
+        except (KeyError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise ValueError(f"invalid {report_role} snapshot: {exc}") from exc
+        if not isinstance(report, dict):
+            raise ValueError(f"{report_role} snapshot must contain an object")
+        for predicate in rule.get("predicates", []):
+            if not isinstance(predicate, dict):
+                raise ValueError(f"invalid resolver predicate for {field}")
+            actual = _snapshot_pointer(report, predicate.get("pointer"))
+            if "equals" in predicate:
+                matched = actual == predicate["equals"]
+            elif isinstance(predicate.get("enum"), list):
+                matched = actual in predicate["enum"]
+            else:
+                raise ValueError(f"invalid resolver predicate for {field}")
+            if not matched:
+                raise ValueError(f"{report_role} snapshot is no longer eligible")
+        if _snapshot_pointer(report, rule.get("value_pointer")) != config.get(field):
+            raise ValueError(f"{report_role} snapshot does not prove configured {field}")
+        declared_hash = _snapshot_pointer(report, rule.get("hash_pointer"))
+        actual_hash = hashlib.sha256(snapshots[source_role]).hexdigest()
+        if declared_hash != actual_hash:
+            raise ValueError(f"{report_role} snapshot hash does not prove {source_role}")
 
 
 def verify_approved_package(video: Path, cover: Path, verification: Path) -> dict[str, object]:
@@ -241,6 +431,18 @@ def upload_thumbnail(token: str, video_id: str, cover: bytes, content_type: str)
     return result
 
 
+def _same_recording_date(left: object, right: object) -> bool:
+    if left is None or right is None:
+        return left is right
+    def parse(value: object) -> datetime:
+        text = str(value)
+        return datetime.fromisoformat(text[:-1] + "+00:00" if text.endswith("Z") else text)
+    try:
+        return parse(left).date() == parse(right).date()
+    except ValueError:
+        return False
+
+
 def wait_for_verified_upload(
     token: str,
     video_id: str,
@@ -256,7 +458,10 @@ def wait_for_verified_upload(
         response = api_json(
             "/videos",
             token,
-            params={"part": "snippet,status,processingDetails", "id": video_id},
+            params={
+                "part": "snippet,status,recordingDetails,processingDetails",
+                "id": video_id,
+            },
         )
         items = response.get("items") or []
         if len(items) != 1:
@@ -266,7 +471,7 @@ def wait_for_verified_upload(
         upload_status = (item.get("status") or {}).get("uploadStatus")
         if processing in {"failed", "terminated"} or upload_status in {"failed", "rejected", "deleted"}:
             raise ValueError(f"YouTube processing failed: {processing or upload_status}")
-        if processing == "succeeded" or upload_status == "processed":
+        if processing == "succeeded" and upload_status == "processed":
             snippet = item.get("snippet") or {}
             status = item.get("status") or {}
             actual = {
@@ -282,6 +487,30 @@ def wait_for_verified_upload(
                 raise ValueError("YouTube read-back metadata does not match the approved metadata")
             if status.get("privacyStatus") != privacy:
                 raise ValueError("YouTube read-back privacy does not match the approved audience")
+            extended_actual = {
+                "category_id": snippet.get("categoryId"),
+                "default_language": snippet.get("defaultLanguage"),
+                "made_for_kids": status.get("selfDeclaredMadeForKids"),
+                "contains_synthetic_media": status.get("containsSyntheticMedia") is True,
+                "embeddable": status.get("embeddable"),
+                "license": status.get("license"),
+                "public_stats_viewable": status.get("publicStatsViewable"),
+                "recording_date": (item.get("recordingDetails") or {}).get("recordingDate"),
+            }
+            for field, actual_value in extended_actual.items():
+                if field not in expected:
+                    continue
+                expected_value = expected[field]
+                matches = (
+                    _same_recording_date(actual_value, expected_value)
+                    if field == "recording_date"
+                    else actual_value == expected_value
+                )
+                if not matches:
+                    raise ValueError(
+                        "YouTube read-back extended metadata does not match "
+                        f"approved field: {field}"
+                    )
             return {
                 "processing_status": str(processing or upload_status),
                 "privacy": str(status.get("privacyStatus")),
@@ -293,50 +522,84 @@ def wait_for_verified_upload(
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--channel", help="Key from manage_youtube_channels.py list; omitted only for legacy environment credentials")
-    parser.add_argument("--video", required=True, type=Path)
-    parser.add_argument("--cover", required=True, type=Path, help="Approved JPEG or PNG cover (max 2 MiB)")
-    parser.add_argument("--title-file", required=True, type=Path)
-    parser.add_argument("--description-file", required=True, type=Path)
     parser.add_argument(
-        "--tags-file",
-        required=True,
+        "--story",
         type=Path,
-        help="UTF-8 file containing one accurate YouTube tag per line",
+        help="story.json containing publication.targets.youtube validated by JSON Schema",
     )
     parser.add_argument(
-        "--audience",
-        choices=["contacts", "everyone", "link"],
-        required=True,
-        help="contacts=private, everyone=public, link=unlisted",
+        "--schema",
+        type=Path,
+        default=DEFAULT_SCHEMA,
+        help="YouTube publication JSON Schema",
     )
     parser.add_argument(
-        "--playlist-title",
-        default=os.environ.get("YOUTUBE_SHORTS_PLAYLIST", DEFAULT_SHORTS_PLAYLIST),
-        help="Required exact owned playlist title",
+        "--manifest-schema",
+        type=Path,
+        default=DEFAULT_MANIFEST_SCHEMA,
+        help="Approved preflight manifest JSON Schema",
     )
-    parser.add_argument("--verification", required=True, type=Path)
+    parser.add_argument(
+        "--metadata-preflight",
+        type=Path,
+        help="User-approved, schema/config/file-hash-bound YouTube manifest",
+    )
     parser.add_argument("--approved", action="store_true")
     parser.add_argument("--processing-timeout", type=float, default=600)
     args = parser.parse_args()
     if not args.approved:
         raise SystemExit("Refusing publication without explicit --approved after the user command")
+    if args.story is None:
+        raise SystemExit("Refusing publication without --story configuration")
+    if args.metadata_preflight is None:
+        raise SystemExit(
+            "Refusing publication without --metadata-preflight after resolving "
+            "schema-derived questions and showing the exact normalized config"
+        )
     try:
-        approved = verify_approved_package(args.video, args.cover, args.verification)
-        title = read_required_text(args.title_file, "title")
-        description = read_required_text(args.description_file, "description")
-        tags = read_tags(args.tags_file)
-    except ValueError as exc:
+        require_trusted_schema(args.schema, DEFAULT_SCHEMA, "publication schema")
+        require_trusted_schema(
+            args.manifest_schema, DEFAULT_MANIFEST_SCHEMA, "approval manifest schema"
+        )
+        decisions, manifest, schema, paths = verify_approved_manifest_snapshot(
+            args.metadata_preflight,
+            args.story,
+            args.schema,
+            args.manifest_schema,
+        )
+        snapshots = snapshot_approved_artifacts(manifest, paths)
+        validate_snapshot_eligibility(decisions, schema, snapshots)
+        title = read_required_text_bytes(snapshots["title_file"], "title")
+        description = read_required_text_bytes(snapshots["description_file"], "description")
+        tags = read_tags_bytes(snapshots["tags_file"])
+        if (
+            decisions.get("location_decision") == "description"
+            and decisions.get("location_text") not in description
+        ):
+            raise ValueError(
+                "location_text must appear exactly in the snapshotted description_file"
+            )
+        cover_mime, cover_bytes = validate_cover_bytes(snapshots["cover"])
+        approved = {
+            "video_bytes": snapshots["video"],
+            "video_sha256": hashlib.sha256(snapshots["video"]).hexdigest(),
+            "cover_bytes": cover_bytes,
+            "cover_mime": cover_mime,
+            "cover_sha256": hashlib.sha256(cover_bytes).hexdigest(),
+        }
+    except (OSError, ValueError) as exc:
         raise SystemExit(str(exc)) from None
-    privacy = privacy_for_audience(args.audience)
+    privacy = privacy_for_audience(str(decisions["audience"]))
+    channel_key = str(decisions["channel_key"])
+    playlist_title = str(decisions["playlist_title"])
 
     try:
-        if args.channel:
-            selected_channel, credentials = credentials_for_channel(args.channel)
-            expected_channel_id = selected_channel["channel_id"]
-        else:
+        if channel_key == "legacy-env":
             credentials = legacy_environment_credentials()
             expected_channel_id = None
+        else:
+            selected_channel, credentials = credentials_for_channel(channel_key)
+            expected_channel_id = selected_channel["channel_id"]
     except ValueError as exc:
         raise SystemExit(str(exc)) from None
 
@@ -360,22 +623,17 @@ def main():
     # Resolve before upload so a missing/duplicate playlist cannot leave a Short
     # outside the required playlist.
     try:
-        playlist_id = select_playlist_id(list_owned_playlists(token), args.playlist_title)
+        playlist_id = select_playlist_id(list_owned_playlists(token), playlist_title)
     except ValueError as exc:
         raise SystemExit(str(exc)) from None
 
-    meta = {
-        "snippet": {
-            "title": title,
-            "description": description,
-            "categoryId": "19",
-            "tags": tags,
-        },
-        "status": {
-            "privacyStatus": privacy,
-            "selfDeclaredMadeForKids": False,
-        },
-    }
+    meta, write_parts = build_youtube_api_metadata(
+        title=title,
+        description=description,
+        tags=tags,
+        privacy=privacy,
+        decisions=decisions,
+    )
     body = json.dumps(meta).encode()
     headers = {
         "Authorization": "Bearer " + token,
@@ -384,7 +642,7 @@ def main():
         "X-Upload-Content-Length": str(len(approved["video_bytes"])),
     }
     start = req(
-        "https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status",
+        build_youtube_upload_url(write_parts, decisions["notify_subscribers"]),
         body,
         headers,
         "POST",
@@ -406,6 +664,14 @@ def main():
         "title": meta["snippet"]["title"],
         "description": meta["snippet"]["description"],
         "tags": tags,
+        "category_id": decisions["category_id"],
+        "default_language": decisions["default_language"],
+        "made_for_kids": decisions["made_for_kids"],
+        "contains_synthetic_media": decisions["contains_synthetic_media"],
+        "embeddable": decisions["embeddable"],
+        "license": decisions["license"],
+        "public_stats_viewable": decisions["public_stats_viewable"],
+        "recording_date": decisions.get("recording_date"),
     }
     try:
         readback = wait_for_verified_upload(
@@ -458,7 +724,55 @@ def main():
             "id": video_id,
             "url": "https://youtu.be/" + video_id,
             "playlist_added": False,
-            "playlist_title": args.playlist_title,
+            "playlist_title": playlist_title,
+            "error_type": type(exc).__name__,
+        }
+        raise SystemExit(json.dumps(safe, ensure_ascii=False)) from None
+
+    publish_record = {
+        "schema_version": 1,
+        "platform": "youtube",
+        "published_at": datetime.now(timezone.utc).isoformat(),
+        "channel": {
+            "key": channel_key,
+            "id": live_channel["id"],
+            "title": live_channel["title"],
+        },
+        "video_id": video_id,
+        "url": "https://youtu.be/" + video_id,
+        "visibility": privacy,
+        "media_sha256": approved["video_sha256"],
+        "processing": {
+            "upload_status": "processed",
+            "processing_status": readback["processing_status"],
+            "metadata_readback_verified": True,
+        },
+        "thumbnail": {
+            "uploaded": True,
+            "api_kind": thumb_response["kind"],
+            "source_path": decisions["cover_path"],
+            "source_sha256": approved["cover_sha256"],
+        },
+        "playlist": {
+            "id": playlist_id,
+            "title": playlist_title,
+            "item_id": playlist_item_id,
+        },
+        "telegram_url_released": False,
+    }
+    try:
+        record_path = write_publish_record(args.story, publish_record)
+    except (OSError, ValueError) as exc:
+        safe = {
+            "ok": False,
+            "platform": "youtube",
+            "video_uploaded": True,
+            "thumbnail_uploaded": True,
+            "playlist_added": True,
+            "id": video_id,
+            "url": "https://youtu.be/" + video_id,
+            "readback_verified": True,
+            "record_written": False,
             "error_type": type(exc).__name__,
         }
         raise SystemExit(json.dumps(safe, ensure_ascii=False)) from None
@@ -467,13 +781,13 @@ def main():
         "ok": True,
         "platform": "youtube",
         "channel": {
-            "key": args.channel or "legacy-env",
+            "key": channel_key,
             "id": live_channel["id"],
             "title": live_channel["title"],
         },
         "id": video_id,
         "url": "https://youtu.be/" + video_id,
-        "audience": args.audience,
+        "audience": decisions["audience"],
         "privacy": privacy,
         "sha256": approved["video_sha256"],
         "readback_verified": True,
@@ -481,15 +795,16 @@ def main():
         "tags": tags,
         "thumbnail": {
             "uploaded": True,
-            "path": str(args.cover),
+            "path": str(paths["cover"]),
             "sha256": approved["cover_sha256"],
             "api_kind": thumb_response["kind"],
         },
         "playlist": {
             "id": playlist_id,
-            "title": args.playlist_title,
+            "title": playlist_title,
             "item_id": playlist_item_id,
         },
+        "record": str(record_path),
     }, ensure_ascii=False))
 
 

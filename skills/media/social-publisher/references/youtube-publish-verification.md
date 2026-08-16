@@ -6,16 +6,16 @@ Use this after the user has explicitly approved a YouTube publication. OAuth set
 
 1. Require the user-facing audience choice **для своих контактов / для всех / по ссылке** for this publication. Map it to `private` / `public` / `unlisted`; do not use a default. Clarify that YouTube `private` means explicitly invited Google accounts, not the user's phone or Telegram contacts.
 2. Resolve the **exact file path that will be uploaded** before any hash or API work. If the user reviewed a delivery transcode, require it to be a derivative of the same approved canonical master; do not silently upload an older master or a visually different full-resolution file.
-3. Recompute that exact upload file's SHA-256 and require it to equal the path and hash in the current green `verification.json`. Ad-hoc decode checks, manifest notes, or a hash recorded only under `full_preview` do not replace package verification.
-4. Require `verification.json` to be newer than the manifest, the exact upload file, the approved cover, and all selected-source changes. A mismatch or stale record is a **hard stop**: regenerate verification before calling `videos.insert`, never repair the record after publication.
-5. Recompute the approved cover's SHA-256 and require it to equal `cover.sha256` in the current green `verification.json`. The cover must be a real JPEG or PNG validated by file bytes (not extension alone), at most 2 MiB, with a supported signature. Missing, mismatched, oversized, or corrupt covers are a **hard stop** before OAuth or any network write.
+3. Resolve `verification_file` from the exact eligible video report and require its declared video SHA-256 to match the upload bytes. Ad-hoc decode checks or manifest notes do not replace this report.
+4. Resolve `cover_verification_file` from the report that marks the selected artifact as a user-approved YouTube `standard_api_thumbnail`; require its declared output SHA-256 to match the cover bytes. Never infer freshness from mtime.
+5. Bind both reports, the video, cover, and all metadata files into the immutable approval manifest. Immediately before OAuth, snapshot every artifact once, rehash those exact bytes against the manifest, and consume only those snapshots. Any mismatch is a **hard stop**. The cover must also be a real JPEG or PNG validated by bytes, at most 2 MiB.
 6. Confirm title and description files are non-empty.
 7. Confirm credential presence without printing values.
 8. Refresh OAuth and identify the destination channel through a read-only API call. Do not upload merely to test credentials.
 
 ## Upload exactly once
 
-List the registered targets, ask the user to choose one, then run `scripts/publish_youtube.py` once with the approved media, metadata, required `--cover`, required `--channel <selected-key>`, and required `--audience {contacts,everyone,link}`. Capture the returned channel, video ID, and URL. The script verifies the selected OAuth channel before upload and maps `contacts` → `private`, `everyone` → `public`, and `link` → `unlisted`.
+List the registered targets, ask the user to choose one, record all decisions under `story.publication.targets.youtube`, complete `references/youtube-metadata-preflight.md`, and run `scripts/publish_youtube.py` exactly once with required `--story`, required `--metadata-preflight`, and `--approved`. Do not pass media or metadata as independent CLI parameters. The publisher validates the story against `youtube-publication.schema.json`, verifies the schema-bound manifest and selected OAuth channel before upload, and maps `contacts` → `private`, `everyone` → `public`, and `link` → `unlisted`.
 
 If the request fails after upload initiation or the response is ambiguous, do **not** immediately retry. First query YouTube for the returned/known ID or otherwise rule out an already-created video. A blind retry can create a duplicate.
 

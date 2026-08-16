@@ -123,7 +123,7 @@ Only generate presets for platforms requested by the publishing plan. A YouTube 
 The renderer records `platform_contract`, `text_safe_rect_pixels`, actual `text_bounding_boxes`, dimension provenance and safe-zone provenance. Rendering fails if text leaves the selected safe rectangle.
 
 - YouTube API thumbnail: use a conservative inner 5% margin on every side. YouTube's cited page specifies 16:9 and 3840×2160 but does not publish numeric text-safe margins.
-- Optional YouTube portrait Shorts cover: reserve the rightmost 20% and lower 20% from text; keep a left 8% margin. This is a locally calibrated UI policy and does not describe the API-thumbnail surface.
+- Optional YouTube portrait Shorts cover: keep every critical text bounding box inside the central rectangle `x=8%..80%, y=29%..71%`. At 2160×3840 this is approximately `x=173..1728, y=1114..2727`; at a 1080×1920 first-frame derivative it is approximately `x=86..864, y=557..1363`. This retains the right-side Shorts controls strip and keeps text inside a conservative central crop for Telegram link previews when YouTube exposes the 9:16 Shorts `og:image`. This is a locally calibrated policy based on observed YouTube/Telegram behavior, not an official numeric Telegram or YouTube specification. Generate the title inside this rectangle rather than merely checking it after render; any text outside it fails the cover.
 - Instagram Reels cover: text stays within `x=5%..95%, y=18%..82%`, a conservative crop policy. Meta's cited page specifies size but no numeric safe margins.
 - Telegram Story first frame: text stays within `x=5%..95%, y=12%..80%`, a conservative UI policy to avoid common client chrome; recheck against a real target-client preview when UI changes.
 

@@ -5,6 +5,8 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
 
 python_bin="${PYTHON:-python3}"
+uv_bin="${UV:-uv}"
+pil_suite="skills/media/static-cover-collage/scripts/tests"
 suites=(
   scripts/tests
   skills/media/still-image-animation/scripts/tests
@@ -26,5 +28,14 @@ fi
 
 for suite in "${suites[@]}"; do
   printf '\n=== %s ===\n' "$suite"
-  "$python_bin" -m unittest discover -s "$suite" -p 'test_*.py' -v
+  if [[ "$suite" == "$pil_suite" ]]; then
+    command -v "$uv_bin" >/dev/null 2>&1 || {
+      printf 'ERROR: uv is required to run %s with Pillow\n' "$suite" >&2
+      exit 1
+    }
+    printf 'dependency: Pillow via uv\n'
+    "$uv_bin" run --with Pillow "$python_bin" -m unittest discover -s "$suite" -p 'test_*.py' -v
+  else
+    "$python_bin" -m unittest discover -s "$suite" -p 'test_*.py' -v
+  fi
 done

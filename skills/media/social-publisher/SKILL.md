@@ -1,7 +1,7 @@
 ---
 name: social-publisher
 description: Publish an already verified media package to YouTube, Telegram Stories, or Instagram through official APIs after explicit publication and audience gates. Use for OAuth setup, platform adapters, upload verification, and publish records; never for story composition.
-version: 1.3.0
+version: 1.4.0
 author: Sergey Chernov / Hermes Agent
 license: MIT
 metadata:
@@ -19,15 +19,30 @@ It must not choose a narrative, reorder scenes, animate photos, rewrite approved
 
 ## Hard gates
 
-Before every network write require all of the following:
+Before every publication network write require all of the following:
 
-1. `verification.json` is green and its hashes match the current files.
+1. The current platform-specific verification reports are eligible and their hashes match the current files.
 2. The package has not changed since preview/approval.
 3. The exact media, title, description, tags/caption, cover, and targets were shown.
 4. The user explicitly said **«публикуй»** or an equally unambiguous command naming the target.
 5. For YouTube or Telegram, the user explicitly chose one current audience: **для своих контактов**, **для всех**, or **по ссылке**.
+6. A target-specific missing-information preflight is complete: unknown decisions were asked, explicit omissions were recorded where supported, and the exact final publication manifest was shown.
 
 Never infer approval from “собери”, “подготовь”, “покажи”, media uploads, or an old package.
+
+## Missing-information preflight
+
+Before requesting publication approval, inventory every target-specific field and classify it as:
+
+- verified from the exact approved package;
+- safe visible default shown in the final summary;
+- explicit user decision for this publication revision;
+- explicitly omitted when the platform and policy permit omission; or
+- unresolved blocker.
+
+Ask the user only about unresolved or policy-sensitive values. Never guess dates, coordinates, target/account, audience, made-for-kids, synthetic-media disclosure, privacy, or other legal/visibility decisions. A sourced candidate is not a confirmed value. Do not silently reuse answers from another package or a stale revision. Any change to media, cover, visible metadata, target, audience, or disclosure invalidates the previous publication approval.
+
+The final summary must show the exact target, audience/privacy, visible text, media and cover, optional date/location decisions, disclosures, subscriber-notification choice when supported, platform settings, and explicit omissions. Do not invoke a publisher until the user gives an unambiguous publication command after seeing that summary.
 
 ## Audience mapping
 
@@ -41,23 +56,38 @@ Approval and audience are separate gates.
 
 ## YouTube
 
-Require a verified video, reviewed non-empty tag file, exact metadata, and an approved platform-fit cover. Run:
+Require a verified video, reviewed non-empty tag file, exact metadata, an approved platform-fit API cover, and a hash-bound metadata preflight. Read `references/youtube-metadata-preflight.md`. All publication parameters live in `story.publication.targets.youtube` and are validated by `templates/youtube-publication.schema.json`; do not create a second decisions file and do not infer required fields in prose.
+
+First list the locally registered channels. If `story.json` already contains a selected channel key, verify that it still exists in the current registry; otherwise ask for a channel choice and save it. For the selected channel, use the read-only playlist command to verify the OAuth identity and fetch `playlists.list(mine=true)`. If the saved exact playlist title still exists in that live result, preserve it; otherwise ask for a playlist choice and save it. Do not repeatedly ask for valid saved values. After resolver/assess succeeds, show one complete summary of all saved publication information and ask one combined question: whether the information is still current and the exact package should be published. A positive answer is the final publication approval. Ask separate field questions only for missing, invalid, ambiguous, or explicitly changed values. No YouTube write endpoint may be called before that combined approval.
 
 ```bash
 python3 <skill-dir>/scripts/manage_youtube_channels.py list
+python3 <skill-dir>/scripts/list_youtube_playlists.py --channel <selected-key>
+python3 <skill-dir>/scripts/youtube_metadata_preflight.py resolve \
+  --story <package-dir>/story.json \
+  --schema <skill-dir>/templates/youtube-publication.schema.json \
+  --write
+python3 <skill-dir>/scripts/youtube_metadata_preflight.py assess \
+  --story <package-dir>/story.json \
+  --schema <skill-dir>/templates/youtube-publication.schema.json \
+  --locale ru
+```
+
+The resolver executes only `x-auto-resolve` rules from the schema. It writes only unique eligible technical paths. Never choose by mtime: `ambiguities` require an explicit package decision, while `blockers` require a missing approval/artifact to be fixed. Ask only entries returned in `questions`; technical path failures are not user questionnaires.
+
+Repeat `resolve` and `assess` after recording answers or approvals. When and only when `ready: true`, show the complete normalized summary and request final publication approval. After that approval, create the immutable manifest exactly as documented in `references/youtube-metadata-preflight.md`, then publish:
+
+For recording date, ask for the date only, never exact shooting time. Accept `YYYY-MM-DD`, `сегодня`, `вчера`, `позавчера`, or a Russian weekday such as `в среду`. Resolve relative wording against the current local date in the event location/timezone with `scripts/normalize_recording_date.py`; a bare weekday means the most recent occurrence, never a future date. Show the resulting `YYYY-MM-DD` in the final manifest.
+
+```bash
 python3 <skill-dir>/scripts/publish_youtube.py \
-  --channel <selected-key> \
-  --video <package-dir>/reel-short.mp4 \
-  --cover <package-dir>/youtube-cover.jpg \
-  --title-file <package-dir>/youtube-title.txt \
-  --description-file <package-dir>/youtube-description.txt \
-  --tags-file <package-dir>/youtube-tags.txt \
-  --verification <package-dir>/verification.json \
-  --audience {contacts,everyone,link} \
+  --story <package-dir>/story.json \
+  --schema <skill-dir>/templates/youtube-publication.schema.json \
+  --metadata-preflight <package-dir>/youtube-publication-preflight.json \
   --approved
 ```
 
-Before every agent-driven YouTube publication, list the registered channels, present them as a selectable choice, and pass the selected key. Never silently reuse the previous channel. Each key maps to its own mode-600 OAuth credentials file; the publisher verifies `channels.list(mine=true)` matches the selected registered channel before upload. For compatibility only, legacy callers may omit `--channel` and keep using the three existing `YOUTUBE_*` environment variables; migrate them with the command in `references/youtube-oauth-setup.md`. Read `references/youtube-oauth-setup.md`, `references/youtube-publish-verification.md`, and `references/youtube-short-thumbnails.md`. API acceptance is not final verification: poll processing, read metadata/tags back, upload the verified cover through `thumbnails.set`, and check the intended public surface when applicable. The Shorts-grid frame is a separate manual surface; the Data API cannot verify it.
+Before every agent-driven YouTube publication, list the registered channels and verify the saved `channel_key` against the current registry. Preserve a valid saved key and include the current channel list plus selected channel in the single final summary; ask for a new selection only when the key is missing, invalid, or the user says it changed. Each key maps to its own mode-600 OAuth credentials file; the publisher verifies `channels.list(mine=true)` matches the selected registered channel before upload. For compatibility only, `channel_key=legacy-env` keeps using the three existing `YOUTUBE_*` environment variables; migrate them with the command in `references/youtube-oauth-setup.md`. Read `references/youtube-oauth-setup.md`, `references/youtube-publish-verification.md`, `references/youtube-short-thumbnails.md`, and `references/youtube-metadata-preflight.md`. API acceptance is not final verification: poll processing, read metadata/tags/category/language/status/recording date back, upload the verified cover through `thumbnails.set`, and check the intended public surface when applicable. Deprecated YouTube geo coordinates are never sent; confirmed public location text must occur exactly in the approved description. The Shorts-grid frame is a separate manual surface; the Data API cannot verify it.
 
 **Telegram preview gate after YouTube publication:** when the active delivery channel is Telegram, do not include a clickable YouTube URL in the first success response. Telegram can crawl and cache the exact URL before the user finishes choosing the Shorts cover, and Bot API provides no reliable global URL-cache purge. Report the video ID in non-link form, verify the conventional YouTube CDN/OG thumbnail, let the user finish any owner-facing Shorts cover selection, and release the URL only after an explicit request. If a controlled Telegram share is needed, send the approved cover as a photo and put the URL in its caption rather than relying on an automatic link card; alternatively send text with link preview explicitly disabled. Never claim that deleting a message or adding a query parameter clears Telegram's global cache.
 
